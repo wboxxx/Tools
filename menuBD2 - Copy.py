@@ -23,33 +23,29 @@ tagged_tab_frame = None
 from menu_tree_builder import *
 from menu_html_utils import *
 from utils import Brint  # ou adapte selon ton import
-from PIL import Image, ImageDraw
-import webbrowser
-from typing import List
-
-last_loaded_session = None
 
 
 action_keywords = {
-    "menu": "blue",
-    "root": "green",
-    "down": "green",
-    "side": "green",
-    "up": "green",
-    "tango": "orange",
     "click": "blue",
-    "swipe": "blue",
-    "open": "blue"
-    # … autres actions
+    "slide": "blue",
+    "open": "blue",
+    "close": "blue",
+    "select": "blue",
+    "comment": "orange"
 }
 
 target_keywords = {
-    "profil": "purple",
-    "paramètres": "purple",
-    "aide": "purple",
-    "boutique": "purple"
-    # … autres cibles
+    "bouton": "green",
+    "menu": "green",
+    "onglet": "green",
+    "carrousel": "green",
+    "bandeau": "green",
+    "popup": "green",
+    "champ": "green",
+    "valider": "green",
+    "retour": "green"
 }
+
 transcription_display_data = []
 
 
@@ -93,34 +89,6 @@ timer_running = False
 confidence_threshold = None
 last_transcribed_wav_path = None
 confidence_index = {}  # clé = mot, valeur = (tab_frame, tag)
-
-def format_tags_for_display(raw_text: str) -> str:
-    # Ajoute un retour à la ligne avant chaque 'TANGO' (sauf si c'est déjà en début de ligne)
-    import re
-    # Ajoute \n avant 'TANGO' précédé d'un caractère autre que \n ou début de chaîne
-    formatted = re.sub(r'(?<!^)(?<!\n)(TANGO)', r'\n\1', raw_text)
-    return formatted
-
-
-
-
-
-def move_console_to_right_half():
-    import ctypes
-
-    user32 = ctypes.windll.user32
-    hwnd = ctypes.windll.kernel32.GetConsoleWindow()
-    if hwnd:
-        screen_width = user32.GetSystemMetrics(0)
-        screen_height = user32.GetSystemMetrics(1)
-        width = screen_width // 2
-        height = screen_height
-        x = screen_width - width
-        y = 0
-        ctypes.windll.user32.MoveWindow(hwnd, x, y, width, height, True)
-
-
-
 
 def get_screenshots_with_timestamps():
     import os
@@ -198,12 +166,6 @@ def render_tagged_transcription():
                 messagebox.showerror("Erreur", f"Impossible d’ouvrir l’image : {e}")
 
         tagged_text_widget.delete("1.0", tk.END)
-        tagged_text_widget.tag_config("black", foreground="black")
-        tagged_text_widget.tag_config("blue", foreground="blue")
-        tagged_text_widget.tag_config("green", foreground="darkgreen")
-        tagged_text_widget.tag_config("orange", foreground="orange")
-        tagged_text_widget.tag_config("purple", foreground="purple", underline=1)
-
 
         full_text = transcription_text_widget.get("1.0", tk.END).strip()
         lines = full_text.splitlines()
@@ -269,9 +231,6 @@ def render_tagged_transcription():
         tagged_text_widget.tag_config("purple", foreground="purple", underline=1)
         tagged_text_widget.tag_config("gray", foreground="gray", font=("Arial", 9, "italic"))
 
-        formatted_text = format_tags_for_display(raw_text)
-        tagged_text_widget.delete("1.0", tk.END)
-        tagged_text_widget.insert("1.0", formatted_text)
 
         Brint("[TAG FORMATTER] ✅ Formattage terminé avec images.")
 
@@ -299,6 +258,7 @@ def parse_text_widget_into_display_data():
             "confidence": 1.0  # on simule une confiance max
         })
     Brint(f"[TEXT → DATA] {len(transcription_display_data)} mots régénérés")
+
 
 
 
@@ -520,29 +480,18 @@ import os
 from session_data import SessionData, Word, Screenshot
 from random import uniform
 
-
-
 def generate_fake_session(save_path="output_sessions/fake_test_session"):
-    from random import uniform
-    from dataclasses import dataclass
-    import shutil
-    import os
-    
-
     Brint("[FAKE SESSION] 🚧 Démarrage génération session factice")
+
     os.makedirs(save_path, exist_ok=True)
     Brint(f"[FAKE SESSION] 📁 Répertoire de session : {save_path}")
 
     # Texte simulé
-    
-    # Texte simulé avec BACK
     tagged_text = [
         "TANGO MENU ROOT Accueil",
         "TANGO MENU DOWN Profil",
-        "TANGO MENU DOWN Préférences",
-        "TANGO MENU BACK",
-        "TANGO MENU SIDE Paramètres",
-        "TANGO MENU DOWN Aide",
+        "TANGO MENU DOWN Paramètres",
+        "TANGO MENU UP Aide",
         "TANGO MENU SIDE Boutique"
     ]
     Brint("[FAKE SESSION] 🏷️ Texte taggué simulé :")
@@ -551,70 +500,34 @@ def generate_fake_session(save_path="output_sessions/fake_test_session"):
 
     words = []
     word_timeline = []
-    parsed_tags = []
     time = 3.0
-
-    for i, line in enumerate(tagged_text):
-        parts = line.split()
-        for word in parts:
+    for line in tagged_text:
+        for word in line.split():
             start = round(time, 2)
             words.append(Word(text=word, start=start, confidence=0.9, color="black"))
             word_timeline.append({"word": word, "start": start})
             Brint(f"[FAKE SESSION]   ➕ Word: '{word}' @ {start}s")
             time += uniform(0.3, 0.7)
 
-        if len(parts) >= 3 and parts[1] == "MENU":
-            direction = parts[2]
-            label = " ".join(parts[3:]) if len(parts) > 3 else direction  # BACK has no label
-            label_ts = next((w["start"] for w in word_timeline if w["word"] == label or label.startswith(w["word"])), time)
-            parsed_tags.append({
-                "type": "MENU",
-                "direction": direction,
-                "label": label,
-                "start": label_ts
-            })
-    from PIL import Image, ImageDraw, ImageFont
-
-    def create_fake_screenshot(path, label, width=640, height=360):
-        img = Image.new("RGB", (width, height), color=(40, 40, 40))
-        draw = ImageDraw.Draw(img)
-        try:
-            font = ImageFont.truetype("arial.ttf", 28)
-        except:
-            font = None  # fallback sans font personnalisée
-        draw.text((20, height // 2 - 20), f"{label}", fill=(255, 255, 255), font=font)
-        img.save(path)
-
     screenshots = []
-    screenshots_dir = os.path.join(save_path, "screenshots")
-    os.makedirs(screenshots_dir, exist_ok=True)
-
-    for tag in parsed_tags:
-        t = round(tag["start"], 2)
-
-        label = tag["label"]
-        fname = f"{t:05.2f}_test.png"  # ex: "04.30_test.png"
-        dest_path = os.path.join(screenshots_dir, fname)
-        create_fake_screenshot(dest_path, label)
+    for t in [3, 6, 9, 12, 15]:
+        fname = f"{t:02}_test.png"
+        path = os.path.join(save_path, fname)
+        with open(path, "wb") as f:
+            f.write(b"\x89PNG\r\n\x1a\n")  # dummy PNG header
         screenshots.append(Screenshot(timestamp=t, filename=fname))
-        Brint(f"[FAKE SESSION]   🖼️ Screenshot: {fname} @ {t:.2f}s")
+        Brint(f"[FAKE SESSION]   🖼️ Screenshot: {fname} @ {t}s")
 
-
-    # Création session
     session = SessionData(
         session_id="fake_test_session",
         audio_path="dummy.wav"
     )
     session.words = words
     session.screenshots = screenshots
-    Brint(f"[DEBUG] Nombre de screenshots dans la session : {len(screenshots)}")
-    for s in screenshots:
-        Brint(f"  🖼️ {s.filename} @ {s.timestamp}s")
-
     session.save(save_path)
-    Brint("[SAVE] ✅ Session sauvegardée dans " + os.path.join(save_path, "fake_test_session.json"))
 
-    # Injection dans UI
+    Brint("[FAKE SESSION] ✅ Session factice sauvegardée")
+        # 📝 Injection dans les widgets de test
     transcription_text_widget.delete("1.0", tk.END)
     transcription_text_widget.insert("1.0", "\n".join([line.replace("[", "").replace("]", "") for line in tagged_text]))
 
@@ -622,7 +535,7 @@ def generate_fake_session(save_path="output_sessions/fake_test_session"):
     tagged_text_widget.insert("1.0", "\n".join(tagged_text))
     Brint("[UI] Texte fake injecté dans les widgets 'Transcription' et 'Tags détectés'")
 
-    return session, tagged_text, word_timeline, parsed_tags
+    return session, tagged_text, word_timeline
 
 
 def toggle_record():
@@ -890,12 +803,7 @@ def launch_gui():
     def on_generate_fake_menu_tree():
         Brint("[MENU] ▶ Génération arborescence FAKE pour test")
 
-        session, tagged_text, word_timeline, parsed_tags = generate_fake_session()
-        global last_loaded_session
-        last_loaded_session = session
-
-        
-        tree = build_menu_tree_from_tagged_text(tagged_text, word_timeline, screenshots=session.screenshots, parsed_tags=parsed_tags)
+        session, tagged_text, word_timeline = generate_fake_session()
         screenshots = [(s.timestamp, s.filename) for s in session.screenshots]
 
         tree = build_menu_tree_from_tagged_text(
@@ -940,14 +848,6 @@ def launch_gui():
     folder_path_label = tk.Label(root, text="Aucun dossier sélectionné", fg="blue", cursor="hand2")
     folder_path_label.pack()
     folder_path_label.bind("<Button-1>", lambda e: open_folder_path())
-
-
-
-
-
-
-
-
 
 
     # ▶ Démarrage annotation + audio
@@ -1001,68 +901,8 @@ def launch_gui():
     transcription_notebook.pack(fill="both", expand=True, padx=10, pady=10)
         # 📌 Onglet Tags détectés
     tagged_tab_frame = tk.Frame(transcription_notebook)
-    # 📦 Frame contenant le widget texte + scrollbar
-    tagged_text_frame = tk.Frame(tagged_tab_frame)
-    tagged_text_frame.pack(fill=tk.X, padx=5, pady=5)
-
-    tagged_scrollbar = tk.Scrollbar(tagged_text_frame, orient=tk.VERTICAL)
-    tagged_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
-    tagged_text_widget = tk.Text(
-        tagged_text_frame,
-        wrap=tk.WORD,
-        height=10,  # ← réduit la hauteur visible
-        yscrollcommand=tagged_scrollbar.set
-    )
-    tagged_text_widget.pack(side=tk.LEFT, fill=tk.X, expand=True)
-    tagged_scrollbar.config(command=tagged_text_widget.yview)
-
-    def clean_tagged_lines(raw_text: str) -> List[str]:
-        clean = raw_text.replace("[", "").replace("]", "")
-        return [
-            line.strip() for line in clean.splitlines()
-            if line.strip() and not line.strip().startswith("#")
-        ]
-
-
-
-    # 🌀 Bouton de régénération HTML depuis les tags édités
-    def on_regenerate_html_from_tags():
-        Brint("[UI] 🔁 Regénération HTML à partir du contenu édité de 'Tags détectés'...")
-
-        tagged_text_lines = clean_tagged_lines(tagged_text_widget.get("1.0", tk.END))
-
-        if not last_loaded_session:
-            Brint("[UI] ⚠️ Aucune session active pour accéder aux screenshots et timeline.")
-            return
-
-        screenshots = last_loaded_session.screenshots
-        word_timeline = last_loaded_session.words
-        session_path = last_loaded_session.path
-
-        Brint(f"[UI] 📋 {len(tagged_text_lines)} lignes analysées :")
-        for i, line in enumerate(tagged_text_lines):
-            Brint(f"   {i+1:02d}: {line}")
-
-        try:
-            menu_tree = build_menu_tree_from_tagged_text(tagged_text_lines, word_timeline, screenshots)
-            html_path = os.path.join(session_path, "menu_tree.html")
-            generate_menu_tree_html(menu_tree, html_path)
-            Brint(f"[UI] 🌐 Ouverture de {html_path}")
-            webbrowser.open("file://" + os.path.abspath(html_path))
-        except Exception as e:
-            Brint(f"[UI] ❌ Erreur lors de la génération HTML : {e}")
-
-    # Ajout du bouton UI
-    regen_html_button = tk.Button(tagged_tab_frame, text="🌀 Regénérer HTML", command=on_regenerate_html_from_tags)
-    regen_html_button.pack(pady=5)
-
-
-
-
-
-
-
+    tagged_text_widget = tk.Text(tagged_tab_frame, wrap="word")
+    tagged_text_widget.pack(fill="both", expand=True)
 
     transcription_notebook.add(tagged_tab_frame, text="📌 Tags détectés")
     
@@ -1102,6 +942,5 @@ def launch_gui():
     # 🪟 Lancement de l'UI
     root.mainloop()
 
-#move_console_to_right_half()
 
 launch_gui()
