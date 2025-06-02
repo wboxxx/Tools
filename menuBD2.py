@@ -98,7 +98,7 @@ def format_tags_for_display(raw_text: str) -> str:
     # Ajoute un retour à la ligne avant chaque 'TANGO' (sauf si c'est déjà en début de ligne)
     import re
     # Ajoute \n avant 'TANGO' précédé d'un caractère autre que \n ou début de chaîne
-    formatted = re.sub(r'(?<!^)(?<!\n)(TANGO)', r'\r\1', raw_text)
+    formatted = re.sub(r'(?<!^)(?<!\r\n)(?<!\n)(?<!\r)(TANGO)', r'\r\n\1', raw_text)
     return formatted
 
 
