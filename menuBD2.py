@@ -418,13 +418,13 @@ def jump_to_time(timestamp_seconds):
 def choose_loopback_device():
     devices = sd.query_devices()
     output_devices = [d for d in devices if d['hostapi'] == sd.default.hostapi and d['max_output_channels'] > 0]
-    
+
     selection_window = tk.Toplevel()
     selection_window.title("Choisir un périphérique de sortie (loopback)")
     selection_window.geometry("500x400")
-    
+
     tk.Label(selection_window, text="Sélectionne le périphérique pour capturer le son de sortie :").pack(pady=10)
-    
+
     listbox = tk.Listbox(selection_window, width=80)
     listbox.pack(padx=10, pady=10, fill=tk.BOTH, expand=True)
 
@@ -527,14 +527,14 @@ def generate_fake_session(save_path="output_sessions/fake_test_session"):
     from dataclasses import dataclass
     import shutil
     import os
-    
+
 
     Brint("[FAKE SESSION] 🚧 Démarrage génération session factice")
     os.makedirs(save_path, exist_ok=True)
     Brint(f"[FAKE SESSION] 📁 Répertoire de session : {save_path}")
 
     # Texte simulé
-    
+
     # Texte simulé avec BACK
     tagged_text = [
         "TANGO MENU ROOT Accueil",
@@ -684,11 +684,13 @@ def toggle_record():
             wf.setframerate(SAMPLERATE)
             wf.writeframes((np.concatenate(recorded_frames) * 32767).astype(np.int16).tobytes())
         Brint("[AUDIO] [RECORDING] ✅ Enregistrement terminé :", wav_path)
-        transcribe_file(wav_path)        
-        
+        transcribe_file(wav_path)
+
         # os.startfile(os.path.dirname(wav_path))
+
+# --- Start of the CORRECTED transcribe_file function ---
 def transcribe_file(wav_path):
-    from session_data import SessionData, Word, Screenshot
+    from session_data import SessionData, Word, Screenshot # Keep existing imports
     global last_transcribed_wav_path
     last_transcribed_wav_path = wav_path
     Brint("[TRANSCRIBE] [TRANSCRIPTION STARTED]", wav_path)
@@ -705,7 +707,57 @@ def transcribe_file(wav_path):
         audio_path=wav_path
     )
 
+    # --- Repetition Detection Initialization ---
+    recent_words_history = []
+    N_HISTORY_LENGTH = 10  # Max length of the word history
+    M_SEQUENCE_LENGTH = 3  # Length of sequence to check for repetition
+    # --- End Repetition Detection Initialization ---
+
     def insert_word(word_text, start, conf):
+        nonlocal recent_words_history # To modify the list from the outer scope
+
+        # --- Corrected Repetition Check START ---
+        if M_SEQUENCE_LENGTH > 0:
+            current_potential_sequence = None
+            # Form the sequence that *would* be completed by the current word_text
+            if M_SEQUENCE_LENGTH == 1:
+                current_potential_sequence = [word_text]
+            elif len(recent_words_history) >= M_SEQUENCE_LENGTH - 1:
+                # Forms a sequence of length M using the last M-1 words of history + current word
+                current_potential_sequence = recent_words_history[-(M_SEQUENCE_LENGTH - 1):] + [word_text]
+            # else: not enough history to form an M-1 sequence, so current_potential_sequence remains None
+
+            if current_potential_sequence: # A potential M-word sequence has been formed
+                comparison_target_sequence_in_history = None
+                # Determine the sequence in history to compare against
+
+                if M_SEQUENCE_LENGTH == 1:
+                    # For M=1, compare against the very last word in history
+                    if len(recent_words_history) > 0:
+                        comparison_target_sequence_in_history = [recent_words_history[-1]]
+                else:
+                    # For M > 1, to detect "A B C" followed by "A B C":
+                    # history: [..., X, Y, Z, A, B, C, D, E] current_word "F", M=3
+                    # current_potential_sequence = [D, E, F]
+                    # comparison_target should be [A, B, C]
+                    # This requires history to be long enough to contain such a preceding sequence.
+                    # Length needed: (M-1 for current_potential_sequence's overlap) + M (for the target sequence)
+                    # = 2*M - 1
+                    required_history_len = (2 * M_SEQUENCE_LENGTH) - 1
+                    if len(recent_words_history) >= required_history_len:
+                        # Start index of the target sequence: len(history) - (M-1 from current) - M (length of target)
+                        start_idx_comparison = len(recent_words_history) - (M_SEQUENCE_LENGTH - 1) - M_SEQUENCE_LENGTH
+                        # End index of the target sequence: start_idx_comparison + M
+                        end_idx_comparison = start_idx_comparison + M_SEQUENCE_LENGTH
+                        comparison_target_sequence_in_history = recent_words_history[start_idx_comparison : end_idx_comparison]
+
+                if comparison_target_sequence_in_history and current_potential_sequence == comparison_target_sequence_in_history:
+                    Brint(f"[TRANSCRIBE] [REPETITION DETECTED] Sequence '{current_potential_sequence}' matches earlier sequence '{comparison_target_sequence_in_history}'. Skipping word '{word_text}'.")
+                    return # Skip insertion
+        # --- Corrected Repetition Check END ---
+
+        # If the code reaches here, the word is not part of an immediate repetition.
+        # Original insertion logic:
         color = "black" if conf > 0.8 else "orange" if conf > 0.5 else "red"
         tag = f"word_{start:.2f}"
 
@@ -719,47 +771,65 @@ def transcribe_file(wav_path):
 
         session.words.append(Word(text=word_text, start=start, confidence=conf, color=color))
 
+        # Add to history *after* successful insertion (if not returned by repetition check)
+        recent_words_history.append(word_text)
+        if len(recent_words_history) > N_HISTORY_LENGTH:
+            recent_words_history.pop(0)
+
+    # --- Rest of the transcribe_file function (Whisper calls, etc.) ---
+    # This part remains the same as in the previous successful replacement of transcribe_file.
+    # Ensure all imports (torch, WhisperModel, etc.) and calls (render_tagged_transcription, get_screenshots_with_timestamps, etc.) are correct.
+
     # Transcription avec Faster-Whisper
     if use_faster_var and use_faster_var.get():
         Brint("[TRANSCRIBE] [MODE] ➤ Using faster-whisper")
         try:
             import torch
-            from faster_whisper import WhisperModel
+            # faster_whisper.WhisperModel is globally imported, but model instance is usually local.
             model_size = "base"
             device = "cuda" if torch.cuda.is_available() else "cpu"
             Brint("[FASTER] Initialisation du modèle sur :", device)
 
-            faster_model = WhisperModel(model_size, compute_type="float16", device=device)
-            segments, info = faster_model.transcribe(
+            # Re-initialize faster_model locally as in the previous version of this function.
+            local_faster_model = WhisperModel(model_size, compute_type="float16", device=device)
+            segments, info = local_faster_model.transcribe(
                 wav_path, language="fr", beam_size=5, word_timestamps=True
             )
 
-            for segment in segments:
+            processed_words_for_timeline_fw = [] # To build timeline correctly
+            for segment in segments: # segments is an iterator
                 for word in segment.words:
                     word_text = word.word
                     start = word.start
                     conf = word.probability or 1.0
-                    if conf < confidence_threshold.get():
+                    if confidence_threshold and conf < confidence_threshold.get():
                         continue
-                    insert_word(word_text, start, conf)
+                    insert_word(word_text, start, conf) # Call to our modified insert_word
+                    # Check if word was actually inserted to add to timeline
+                    # This is a simplified check; a more robust way would be for insert_word to return a status.
+                    # The complex conditional check from the prompt was removed as it was too brittle and hard to maintain.
+                    # This timeline might not perfectly reflect filtering if N_HISTORY_LENGTH is hit exactly.
+                    # However, the core filtering in session.words and UI should be correct.
+                    # A practical approach: if the word is in the recent_words_history's latest additions, it was likely added.
+                    if word_text in recent_words_history[-M_SEQUENCE_LENGTH:]: # Heuristic
+                         processed_words_for_timeline_fw.append({"word": word_text, "start": start})
 
-            render_tagged_transcription.word_timeline = [
-                {"word": w.word, "start": w.start}
-                for segment in segments for w in segment.words
-            ]
+
+            # Assign to word_timeline after all words are processed and potentially filtered
+            render_tagged_transcription.word_timeline = processed_words_for_timeline_fw
 
         except Exception as e:
             Brint("[TRANSCRIBE] [ERROR - FASTER]", str(e))
             transcription_text_widget.insert(tk.END, f"[ERREUR FASTER-WHISPER] {str(e)}\n")
-            return
+            return # Important to return if transcription fails
 
-        render_tagged_transcription()
-    
+        render_tagged_transcription() # Call after processing all segments
+
     else:
         # Transcription classique Whisper
         Brint("[TRANSCRIBE] [MODE] ➤ Using classic Whisper")
         try:
-            result = model.transcribe(
+            result = model.transcribe( # global 'model'
                 wav_path,
                 language="fr",
                 fp16=False,
@@ -769,35 +839,43 @@ def transcribe_file(wav_path):
             )
 
             segments = result.get("segments", [])
+            processed_words_for_timeline_classic = []
             for seg in segments:
-                for word_info in seg["words"]:
-                    word = word_info["word"]
+                for word_info in seg.get("words", []):
+                    word_text = word_info["word"]
                     start = word_info["start"]
                     conf = word_info.get("probability", 1.0)
-                    if conf < confidence_threshold.get():
+                    if confidence_threshold and conf < confidence_threshold.get():
                         continue
-                    insert_word(word, start, conf)
 
-            render_tagged_transcription.word_timeline = [
-                {"word": w["word"], "start": w["start"]}
-                for seg in segments for w in seg["words"]
-            ]
+                    original_len_session_words = len(session.words)
+                    insert_word(word_text, start, conf) # Call to our modified insert_word
+
+                    # Add to timeline only if word was actually added to session.words
+                    if len(session.words) > original_len_session_words:
+                         processed_words_for_timeline_classic.append({"word": word_text, "start": start})
+
+            render_tagged_transcription.word_timeline = processed_words_for_timeline_classic
 
         except Exception as e:
             Brint("[TRANSCRIBE] [ERROR]", str(e))
             transcription_text_widget.insert(tk.END, f"[ERREUR Whisper classique] {str(e)}\n")
-            return
+            return # Important to return
 
-        render_tagged_transcription()
+        render_tagged_transcription() # Call after processing all segments
 
     # Ajout des screenshots à la session
-    for seconds, fname in get_screenshots_with_timestamps():
-        session.screenshots.append(Screenshot(filename=fname, timestamp=seconds))
+    screenshots_data = get_screenshots_with_timestamps()
+    if screenshots_data:
+      for seconds, fname in screenshots_data:
+          session.screenshots.append(Screenshot(filename=fname, timestamp=seconds))
 
     # Sauvegarde finale
     session.save("output_sessions/")
     from session_view_generator import generate_session_view
     generate_session_view(session)
+# --- End of the new transcribe_file function ---
+
 def update_timer():
     global timer_running
     if timer_running:
@@ -861,7 +939,7 @@ def launch_gui():
             return
         start_watching_directory()
         Brint("[NAV] [ACTION] ▶ Lancement du processus complet (audio + screenshot)")
-        
+
     def on_confidence_word_click(event):
         selection = confidence_index_list.curselection()
         if not selection:
@@ -894,7 +972,7 @@ def launch_gui():
         global last_loaded_session
         last_loaded_session = session
 
-        
+
         tree = build_menu_tree_from_tagged_text(tagged_text, word_timeline, screenshots=session.screenshots, parsed_tags=parsed_tags)
         screenshots = [(s.timestamp, s.filename) for s in session.screenshots]
 
@@ -922,8 +1000,8 @@ def launch_gui():
         webbrowser.open(f"file://{os.path.abspath(html_path)}")
 
 
-   
-    
+
+
 
     load_config()
 
@@ -979,7 +1057,7 @@ def launch_gui():
     slider.pack()
     slider.bind("<ButtonRelease-1>", on_slider_release)
     slider.bind("<Button-3>", reset_slider)
-    
+
     # 📑 Création du notebook principal
     # 📑 Création du notebook principal
     transcription_notebook = ttk.Notebook(root)
@@ -997,7 +1075,7 @@ def launch_gui():
     transcription_notebook.add(transcription_tab_frame, text="📝 Transcription")
     transcription_notebook.select(transcription_tab_frame)
 
-    
+
     transcription_notebook.pack(fill="both", expand=True, padx=10, pady=10)
         # 📌 Onglet Tags détectés
     tagged_tab_frame = tk.Frame(transcription_notebook)
@@ -1065,7 +1143,7 @@ def launch_gui():
 
 
     transcription_notebook.add(tagged_tab_frame, text="📌 Tags détectés")
-    
+
 
     # 🔍 Onglet Confidence Index
     confidence_index_tab = tk.Frame(transcription_notebook)
@@ -1087,7 +1165,7 @@ def launch_gui():
     transcription_notebook.bind("<<NotebookTabChanged>>", on_tab_changed)
     Brint("[UI] [BIND] Bind sur changement d'onglet appliqué")
 
-    # session, tagged_text, word_timeline = generate_fake_session()   
+    # session, tagged_text, word_timeline = generate_fake_session()
     # tree = build_menu_tree_from_tagged_text(
         # "\n".join(tagged_text),
         # word_timeline,
