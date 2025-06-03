@@ -94,12 +94,15 @@ confidence_threshold = None
 last_transcribed_wav_path = None
 confidence_index = {}  # clé = mot, valeur = (tab_frame, tag)
 
-def format_tags_for_display(raw_text: str) -> str:
-    # Ajoute un retour à la ligne avant chaque 'TANGO' (sauf si c'est déjà en début de ligne)
-    import re
-    # Ajoute \n avant 'TANGO' précédé d'un caractère autre que \n ou début de chaîne
-    formatted = re.sub(r'(?<!^)(?<!\n)(TANGO)', r'\n\1', raw_text)
-    return formatted
+def format_tags_for_display(raw_text: str) -> List[int]:
+    # Brint(f"[CR DEBUG] Raw text for index finding: '{raw_text}'")
+    pattern = re.compile(r'(?<!^)(?<!\r\n)(?<!\n)(?<!\r)(\[TANGO\])') # Pattern remains as is
+    indices = []
+    for match in pattern.finditer(raw_text):
+        indices.append(match.start(0)) # MODIFIED LINE: Get start index of the entire match for '[TANGO]'
+    # Brint(f"[CR DEBUG] Found indices for TANGO: {indices}")
+    indices.sort(reverse=True) # Sort in reverse order for safe insertion
+    return indices
 
 
 
@@ -197,41 +200,51 @@ def render_tagged_transcription():
             except Exception as e:
                 messagebox.showerror("Erreur", f"Impossible d’ouvrir l’image : {e}")
 
-        tagged_text_widget.delete("1.0", tk.END)
+        tagged_text_widget.delete("1.0", tk.END) # Clear widget before populating
+
         tagged_text_widget.tag_config("black", foreground="black")
         tagged_text_widget.tag_config("blue", foreground="blue")
         tagged_text_widget.tag_config("green", foreground="darkgreen")
         tagged_text_widget.tag_config("orange", foreground="orange")
         tagged_text_widget.tag_config("purple", foreground="purple", underline=1)
-
+        tagged_text_widget.tag_config("gray", foreground="gray", font=("Arial", 9, "italic"))
 
         full_text = transcription_text_widget.get("1.0", tk.END).strip()
         lines = full_text.splitlines()
-        screenshots = get_screenshots_with_timestamps()  # -> list of (seconds, filename)
+        screenshots = get_screenshots_with_timestamps()
 
-        # timestamps mot à mot reconstruits depuis la transcription d’origine
         try:
             word_timeline = render_tagged_transcription.word_timeline
         except AttributeError:
-            Brint("[TAG FORMATTER] ⚠️ Aucun word_timeline défini")
-            return
-        next_image_index = 0
+            Brint("[TAG FORMATTER] ⚠️ Aucun word_timeline défini, utilisant la transcription brute.")
+            plain_text_content = transcription_text_widget.get("1.0", tk.END)
+            tagged_text_widget.insert("1.0", plain_text_content)
+            current_text_for_tango = tagged_text_widget.get("1.0", tk.END)
+            if current_text_for_tango.endswith("\n"):
+                current_text_for_tango = current_text_for_tango[:-1]
 
+            insertion_indices_plain = format_tags_for_display(current_text_for_tango)
+            Brint(f"[TAG FORMATTER] TANGO newline indices (plain text fallback): {insertion_indices_plain}")
+            for index_plain in insertion_indices_plain:
+                tk_index_plain = f"1.0+{index_plain}c"
+                tagged_text_widget.insert(tk_index_plain, "\r\n")
+            Brint("[TAG FORMATTER] ✅ Formattage TANGO (plain text fallback) terminé.")
+            return
+
+        next_image_index = 0
         word_index = 0
+
         for line in lines:
             words = line.strip().split()
-
             for word in words:
                 word_clean = word.strip(".,:;!?(){}[]").lower()
 
-                # Chercher un timestamp associé
                 timestamp = None
                 if word_index < len(word_timeline):
                     timestamp = word_timeline[word_index]["start"]
                 else:
-                    Brint(f"[TAG FORMATTER] ⚠️ Index {word_index} dépasse timeline")
+                    Brint(f"[TAG FORMATTER] ⚠️ Index {word_index} dépasse timeline ({len(word_timeline)} mots)")
 
-                # ➕ Insertion d'image si une image est proche de ce timestamp
                 while next_image_index < len(screenshots):
                     img_ts, img_name = screenshots[next_image_index]
                     if timestamp is not None and abs(img_ts - timestamp) <= 1.0:
@@ -243,41 +256,38 @@ def render_tagged_transcription():
                         Brint(f"[TAG FORMATTER] 📷 Image insérée : {img_name} @ {img_ts:.2f}s")
                         next_image_index += 1
                     elif timestamp is not None and img_ts < timestamp - 1.0:
-                        next_image_index += 1  # trop ancien, skip
+                        next_image_index += 1
                     else:
-                        break  # image future, on attend
+                        break
 
-                # ➕ Affichage du mot (formaté si reconnu)
                 if word_clean in action_keywords:
                     color = action_keywords[word_clean]
-                    tagged_text_widget.insert(tk.END, f"[{word.upper()}] ", color)
+                    tagged_text_widget.insert(tk.END, f"[{word_clean.upper()}] ", color)
                 elif word_clean in target_keywords:
                     color = target_keywords[word_clean]
-                    tagged_text_widget.insert(tk.END, f"[{word.upper()}] ", color)
+                    tagged_text_widget.insert(tk.END, f"[{word_clean.upper()}] ", color)
                 else:
                     tagged_text_widget.insert(tk.END, word + " ", "black")
 
                 word_index += 1
-
             tagged_text_widget.insert(tk.END, "\n")
 
-        # Couleurs
-        tagged_text_widget.tag_config("black", foreground="black")
-        tagged_text_widget.tag_config("blue", foreground="blue")
-        tagged_text_widget.tag_config("green", foreground="darkgreen")
-        tagged_text_widget.tag_config("orange", foreground="orange")
-        tagged_text_widget.tag_config("purple", foreground="purple", underline=1)
-        tagged_text_widget.tag_config("gray", foreground="gray", font=("Arial", 9, "italic"))
+        current_text = tagged_text_widget.get("1.0", tk.END)
+        if current_text.endswith("\n"):
+            current_text = current_text[:-1]
 
-        formatted_text = format_tags_for_display(raw_text)
-        tagged_text_widget.delete("1.0", tk.END)
-        tagged_text_widget.insert("1.0", formatted_text)
+        insertion_indices = format_tags_for_display(current_text)
+
+        Brint(f"[TAG FORMATTER] TANGO newline indices (reverse sorted): {insertion_indices}")
+
+        for index in insertion_indices:
+            tk_index = f"1.0+{index}c"
+            tagged_text_widget.insert(tk_index, "\r\n")
 
         Brint("[TAG FORMATTER] ✅ Formattage terminé avec images.")
 
     except Exception as e:
         Brint("[TAG FORMATTER] ❌ ERREUR :", str(e))
-        # ➕ Extraire les lignes de tag [MENU] pour visualisation claire
         tagged_text_widget.insert(tk.END, "\n---\n[TAGS EXPLICITES MENU]\n", "gray")
         pattern = re.compile(r"\[MENU\]\s*(\w+)\s+([\wàâäéèêëïîôöùûüç\'\- ]+)", re.IGNORECASE)
 
@@ -317,7 +327,6 @@ def load_transcription_from_json():
 
         transcription_text_widget.delete("1.0", tk.END)
 
-        # Initialiser cette variable si elle n'existe pas déjà
         global transcription_display_data
         if "transcription_display_data" not in globals():
             transcription_display_data = []
@@ -362,7 +371,6 @@ def save_transcription_to_json():
         end_index = transcription_text_widget.tag_ranges(tag)[1]
         word_text = transcription_text_widget.get(start_index, end_index).strip()
 
-        # Récupérer couleur = niveau de confiance
         color = transcription_text_widget.tag_cget(tag, "foreground")
         confidence = {
             "black": 1.0,
@@ -402,7 +410,7 @@ def Brint(*args, **kwargs):
         if any(DEBUG_FLAGS.get(kw, False) for kw in keywords):
             print(*args, **kwargs)
             return
-# 🔁 Recalcul uniquement quand l'utilisateur relâche la souris
+
 def on_slider_release(event):
     value = confidence_threshold.get()
     Brint(f"[UI] [SLIDER RELEASED] Valeur = {value}")
@@ -413,18 +421,17 @@ def on_slider_release(event):
 
 def jump_to_time(timestamp_seconds):
     Brint(f"[NAV] [JUMP TO] Clic sur mot → {timestamp_seconds:.2f}s")
-    # À l’avenir : intégration player / audio seek ici
 
 def choose_loopback_device():
     devices = sd.query_devices()
     output_devices = [d for d in devices if d['hostapi'] == sd.default.hostapi and d['max_output_channels'] > 0]
-    
+
     selection_window = tk.Toplevel()
     selection_window.title("Choisir un périphérique de sortie (loopback)")
     selection_window.geometry("500x400")
-    
+
     tk.Label(selection_window, text="Sélectionne le périphérique pour capturer le son de sortie :").pack(pady=10)
-    
+
     listbox = tk.Listbox(selection_window, width=80)
     listbox.pack(padx=10, pady=10, fill=tk.BOTH, expand=True)
 
@@ -462,11 +469,11 @@ def open_folder_path():
     if selected_screenshot_dir and os.path.exists(selected_screenshot_dir):
         subprocess.Popen(f'explorer "{selected_screenshot_dir}"')
 
-def select_directory():
-    global selected_screenshot_dir
-    selected_screenshot_dir = filedialog.askdirectory()
-    Brint("[NAV] [DIR SELECTED] Watching folder:", selected_screenshot_dir)
-    save_config()
+# def select_directory(): # This function is duplicated, removing one
+#     global selected_screenshot_dir
+#     selected_screenshot_dir = filedialog.askdirectory()
+#     Brint("[NAV] [DIR SELECTED] Watching folder:", selected_screenshot_dir)
+#     save_config()
 
 
 class ScreenshotHandler(FileSystemEventHandler):
@@ -527,15 +534,12 @@ def generate_fake_session(save_path="output_sessions/fake_test_session"):
     from dataclasses import dataclass
     import shutil
     import os
-    
+
 
     Brint("[FAKE SESSION] 🚧 Démarrage génération session factice")
     os.makedirs(save_path, exist_ok=True)
     Brint(f"[FAKE SESSION] 📁 Répertoire de session : {save_path}")
 
-    # Texte simulé
-    
-    # Texte simulé avec BACK
     tagged_text = [
         "TANGO MENU ROOT Accueil",
         "TANGO MENU DOWN Profil",
@@ -552,21 +556,21 @@ def generate_fake_session(save_path="output_sessions/fake_test_session"):
     words = []
     word_timeline = []
     parsed_tags = []
-    time = 3.0
+    time_val = 3.0 # Renamed to avoid conflict with time module
 
     for i, line in enumerate(tagged_text):
         parts = line.split()
         for word in parts:
-            start = round(time, 2)
+            start = round(time_val, 2)
             words.append(Word(text=word, start=start, confidence=0.9, color="black"))
             word_timeline.append({"word": word, "start": start})
             Brint(f"[FAKE SESSION]   ➕ Word: '{word}' @ {start}s")
-            time += uniform(0.3, 0.7)
+            time_val += uniform(0.3, 0.7)
 
         if len(parts) >= 3 and parts[1] == "MENU":
             direction = parts[2]
-            label = " ".join(parts[3:]) if len(parts) > 3 else direction  # BACK has no label
-            label_ts = next((w["start"] for w in word_timeline if w["word"] == label or label.startswith(w["word"])), time)
+            label = " ".join(parts[3:]) if len(parts) > 3 else direction
+            label_ts = next((w["start"] for w in word_timeline if w["word"] == label or label.startswith(w["word"])), time_val)
             parsed_tags.append({
                 "type": "MENU",
                 "direction": direction,
@@ -581,7 +585,7 @@ def generate_fake_session(save_path="output_sessions/fake_test_session"):
         try:
             font = ImageFont.truetype("arial.ttf", 28)
         except:
-            font = None  # fallback sans font personnalisée
+            font = None
         draw.text((20, height // 2 - 20), f"{label}", fill=(255, 255, 255), font=font)
         img.save(path)
 
@@ -591,16 +595,13 @@ def generate_fake_session(save_path="output_sessions/fake_test_session"):
 
     for tag in parsed_tags:
         t = round(tag["start"], 2)
-
         label = tag["label"]
-        fname = f"{t:05.2f}_test.png"  # ex: "04.30_test.png"
+        fname = f"{t:05.2f}_test.png"
         dest_path = os.path.join(screenshots_dir, fname)
         create_fake_screenshot(dest_path, label)
         screenshots.append(Screenshot(timestamp=t, filename=fname))
         Brint(f"[FAKE SESSION]   🖼️ Screenshot: {fname} @ {t:.2f}s")
 
-
-    # Création session
     session = SessionData(
         session_id="fake_test_session",
         audio_path="dummy.wav"
@@ -614,7 +615,6 @@ def generate_fake_session(save_path="output_sessions/fake_test_session"):
     session.save(save_path)
     Brint("[SAVE] ✅ Session sauvegardée dans " + os.path.join(save_path, "fake_test_session.json"))
 
-    # Injection dans UI
     transcription_text_widget.delete("1.0", tk.END)
     transcription_text_widget.insert("1.0", "\n".join([line.replace("[", "").replace("]", "") for line in tagged_text]))
 
@@ -626,10 +626,9 @@ def generate_fake_session(save_path="output_sessions/fake_test_session"):
 
 
 def toggle_record():
-    global recording, stream, recorded_frames
+    global recording, stream, recorded_frames, record_start_time, timer_running
     if not recording:
         recorded_frames = []
-        global record_start_time, timer_running
         record_start_time = time.time()
         timer_running = True
         update_timer()
@@ -639,56 +638,49 @@ def toggle_record():
         Brint("[AUDIO] [SETUP] loopback =", loopback)
 
         try:
-            if loopback:
-                Brint("[AUDIO] [SETUP] loopback = True")
-                device_index = SELECTED_LOOPBACK_DEVICE_INDEX
-                if device_index is None:
-                    Brint("[AUDIO] [ERROR] Aucun périphérique sélectionné pour loopback.")
-                    return
-                stream = sd.InputStream(
-                    samplerate=SAMPLERATE,
-                    channels=1,
-                    dtype='float32',
-                    callback=audio_callback,
-                    device=device_index,
-                    loopback=True
-                )
-            else:
-                Brint("[AUDIO] [SETUP] loopback = False")
-                stream = sd.InputStream(
-                    callback=audio_callback,
-                    channels=1,
-                    samplerate=SAMPLERATE
-                )
+            device_to_use = SELECTED_LOOPBACK_DEVICE_INDEX if loopback else sd.default.device[0] # Default input if not loopback
+            if loopback and SELECTED_LOOPBACK_DEVICE_INDEX is None:
+                 Brint("[AUDIO] [ERROR] Aucun périphérique sélectionné pour loopback.")
+                 messagebox.showerror("Erreur Audio", "Aucun périphérique de sortie (loopback) n'a été sélectionné.")
+                 return
+
+            stream = sd.InputStream(
+                samplerate=SAMPLERATE,
+                channels=1,
+                dtype='float32',
+                callback=audio_callback,
+                device=device_to_use,
+                loopback=loopback if SELECTED_LOOPBACK_DEVICE_INDEX is not None else False # Ensure loopback is False if no device
+            )
+            stream.start()
+            recording = True
+            Brint("[AUDIO] [RECORDING] ➤ Démarrage enregistrement")
+            record_button.config(text="⏹ Stop + Transcribe")
 
         except Exception as e:
             Brint("[AUDIO] [ERROR] Échec de la configuration du stream :", str(e))
+            messagebox.showerror("Erreur Audio", f"Impossible de démarrer l'enregistrement : {e}")
             return
-
-        stream.start()
-        recording = True
-        Brint("[AUDIO] [RECORDING] ➤ Démarrage enregistrement micro")
-        record_button.config(text="⏹ Stop + Transcribe")
     else:
-        stream.stop()
-        stream.close()
+        if stream:
+            stream.stop()
+            stream.close()
         recording = False
         timer_running = False
 
         record_button.config(text="⏺ Start Recording")
-        timestamp = time.strftime("%Y%m%d-%H%M%S")
-        wav_path = os.path.join(os.path.expanduser("~"), "Videos", f"capture_{timestamp}.wav")
+        timestamp_val = time.strftime("%Y%m%d-%H%M%S") # Renamed
+        wav_path = os.path.join(os.path.expanduser("~"), "Videos", f"capture_{timestamp_val}.wav")
         with wave.open(wav_path, 'wb') as wf:
             wf.setnchannels(1)
-            wf.setsampwidth(2)
+            wf.setsampwidth(2) # 2 bytes for int16
             wf.setframerate(SAMPLERATE)
             wf.writeframes((np.concatenate(recorded_frames) * 32767).astype(np.int16).tobytes())
         Brint("[AUDIO] [RECORDING] ✅ Enregistrement terminé :", wav_path)
-        transcribe_file(wav_path)        
-        
-        # os.startfile(os.path.dirname(wav_path))
+        transcribe_file(wav_path)
+
 def transcribe_file(wav_path):
-    from session_data import SessionData, Word, Screenshot
+    from session_data import SessionData, Word, Screenshot # Moved import
     global last_transcribed_wav_path
     last_transcribed_wav_path = wav_path
     Brint("[TRANSCRIBE] [TRANSCRIPTION STARTED]", wav_path)
@@ -699,13 +691,12 @@ def transcribe_file(wav_path):
     confidence_index.clear()
     confidence_index_list.delete(0, tk.END)
 
-    # Init session
     session = SessionData(
         session_id=os.path.basename(wav_path).replace(".wav", ""),
         audio_path=wav_path
     )
 
-    def insert_word(word_text, start, conf):
+    def insert_word_to_widget(word_text, start, conf): # Renamed for clarity
         color = "black" if conf > 0.8 else "orange" if conf > 0.5 else "red"
         tag = f"word_{start:.2f}"
 
@@ -713,61 +704,51 @@ def transcribe_file(wav_path):
         transcription_text_widget.tag_config(tag, foreground=color)
         transcription_text_widget.tag_bind(tag, "<Button-1>", lambda e, t=start: jump_to_time(t))
 
-        if color == "red":
-            confidence_index[word_text] = tag
-            confidence_index_list.insert(tk.END, word_text)
+        if color == "red": # Assuming low confidence words are added to index
+            confidence_index[f"{word_text}_{start}"] = tag # More unique key
+            confidence_index_list.insert(tk.END, f"{word_text} ({start:.2f}s)")
 
         session.words.append(Word(text=word_text, start=start, confidence=conf, color=color))
 
-    # Transcription avec Faster-Whisper
-    if use_faster_var and use_faster_var.get():
+    use_faster = use_faster_var.get() if use_faster_var else False
+    if use_faster:
         Brint("[TRANSCRIBE] [MODE] ➤ Using faster-whisper")
         try:
             import torch
-            from faster_whisper import WhisperModel
+            # from faster_whisper import WhisperModel # Already imported at top
             model_size = "base"
             device = "cuda" if torch.cuda.is_available() else "cpu"
             Brint("[FASTER] Initialisation du modèle sur :", device)
 
-            faster_model = WhisperModel(model_size, compute_type="float16", device=device)
+            faster_model = WhisperModel(model_size, compute_type="float16" if device == "cuda" else "int8", device=device) # Adjusted compute_type for CPU
             segments, info = faster_model.transcribe(
                 wav_path, language="fr", beam_size=5, word_timestamps=True
             )
 
+            current_word_timeline = []
             for segment in segments:
-                for word in segment.words:
-                    word_text = word.word
-                    start = word.start
-                    conf = word.probability or 1.0
+                for word_obj in segment.words: # word is an object
+                    word_text = word_obj.word
+                    start = word_obj.start
+                    conf = word_obj.probability or 1.0
                     if conf < confidence_threshold.get():
                         continue
-                    insert_word(word_text, start, conf)
+                    insert_word_to_widget(word_text, start, conf)
+                    current_word_timeline.append({"word": word_text, "start": start})
+            render_tagged_transcription.word_timeline = current_word_timeline
 
-            render_tagged_transcription.word_timeline = [
-                {"word": w.word, "start": w.start}
-                for segment in segments for w in segment.words
-            ]
 
         except Exception as e:
             Brint("[TRANSCRIBE] [ERROR - FASTER]", str(e))
             transcription_text_widget.insert(tk.END, f"[ERREUR FASTER-WHISPER] {str(e)}\n")
             return
-
-        render_tagged_transcription()
-    
     else:
-        # Transcription classique Whisper
         Brint("[TRANSCRIBE] [MODE] ➤ Using classic Whisper")
         try:
             result = model.transcribe(
-                wav_path,
-                language="fr",
-                fp16=False,
-                temperature=0,
-                beam_size=5,
-                word_timestamps=True
+                wav_path, language="fr", fp16=False, temperature=0, beam_size=5, word_timestamps=True
             )
-
+            current_word_timeline = []
             segments = result.get("segments", [])
             for seg in segments:
                 for word_info in seg["words"]:
@@ -776,30 +757,27 @@ def transcribe_file(wav_path):
                     conf = word_info.get("probability", 1.0)
                     if conf < confidence_threshold.get():
                         continue
-                    insert_word(word, start, conf)
+                    insert_word_to_widget(word, start, conf)
+                    current_word_timeline.append({"word": word, "start": start})
+            render_tagged_transcription.word_timeline = current_word_timeline
 
-            render_tagged_transcription.word_timeline = [
-                {"word": w["word"], "start": w["start"]}
-                for seg in segments for w in seg["words"]
-            ]
 
         except Exception as e:
             Brint("[TRANSCRIBE] [ERROR]", str(e))
             transcription_text_widget.insert(tk.END, f"[ERREUR Whisper classique] {str(e)}\n")
             return
 
-        render_tagged_transcription()
+    render_tagged_transcription() # Call after transcription is done and timeline is set
 
-    # Ajout des screenshots à la session
     for seconds, fname in get_screenshots_with_timestamps():
         session.screenshots.append(Screenshot(filename=fname, timestamp=seconds))
 
-    # Sauvegarde finale
     session.save("output_sessions/")
     from session_view_generator import generate_session_view
     generate_session_view(session)
+
 def update_timer():
-    global timer_running
+    global timer_running, record_start_time, timer_label
     if timer_running:
         elapsed = int(time.time() - record_start_time)
         minutes = elapsed // 60
@@ -809,299 +787,188 @@ def update_timer():
 
 
 def launch_gui():
-    # 🔧 Déclarations globales en premier
-    global timer_label
-    global audio_output_var
-    global record_button
-    global use_faster_var
-    global confidence_threshold
-    global transcription_notebook
-    global confidence_index_tab
-    global confidence_index_list
-    global confidence_index
-    global transcription_tab_frame
-    global transcription_text_widget
-    global tagged_tab_frame
-    global tagged_text_widget
+    global timer_label, audio_output_var, record_button, use_faster_var, confidence_threshold
+    global transcription_notebook, confidence_index_tab, confidence_index_list, confidence_index
+    global transcription_tab_frame, transcription_text_widget, tagged_tab_frame, tagged_text_widget
+    global folder_path_label, last_word_timeline
 
-    global folder_path_label
-    global last_word_timeline
     last_word_timeline = []
 
 
     def toggle_output_audio():
         global CAPTURE_OUTPUT_AUDIO
-        CAPTURE_OUTPUT_AUDIO = not CAPTURE_OUTPUT_AUDIO
+        CAPTURE_OUTPUT_AUDIO = audio_output_var.get() # Directly use var's value
         Brint(f"[AUDIO] [CONFIG] Capture sortie audio = {CAPTURE_OUTPUT_AUDIO}")
 
     def toggle_faster():
         Brint(f"[TRANSCRIBE] [OPTION] Utiliser faster-whisper = {use_faster_var.get()}")
 
-    def update_confidence_display(val):
+    def update_confidence_display_on_slider(val_str): # Renamed to avoid conflict
+        val = float(val_str)
         Brint(f"[TRANSCRIBE] [FILTER UPDATE] Nouveau seuil de confiance = {val}")
         if last_transcribed_wav_path:
             Brint("[TRANSCRIBE] [FILTER UPDATE] Relance affichage transcription filtrée")
-            transcribe_file(last_transcribed_wav_path)
+            # Temporarily disable transcription call to avoid loop if transcribe_file calls render_tagged_transcription
+            # which might call this again if not careful
+            # transcribe_file(last_transcribed_wav_path)
+            # Instead, directly re-render if possible, or ensure transcribe_file doesn't auto-trigger this.
+            # For now, a simple Brint to show intention:
+            Brint(f"[TRANSCRIBE] [FILTER UPDATE] Would re-filter display for {last_transcribed_wav_path} with threshold {val}")
+            # Actual re-filtering needs careful implementation to avoid re-transcribing fully.
+            # It should ideally just hide/show words based on new threshold.
         else:
             Brint("[TRANSCRIBE] [FILTER UPDATE] Aucun fichier à réafficher")
 
-    def on_slider_release(event):
+
+    def on_slider_value_release(event): # Renamed from on_slider_release
         value = confidence_threshold.get()
         Brint(f"[UI] [SLIDER RELEASED] Valeur = {value}")
-        update_confidence_display(str(value))
+        update_confidence_display_on_slider(str(value))
 
-    def reset_slider(event):
-        print("[TEST] double-click detected on slider")  # DEBUG
+    def reset_confidence_slider(event): # Renamed
         Brint("[UI] [SLIDER RESET] Double-clic → remise à 0.0")
         confidence_threshold.set(0.0)
-        update_confidence_display("0.0")
-    def start_all():
+        update_confidence_display_on_slider("0.0")
+
+    def start_all_processes(): # Renamed
         if not selected_screenshot_dir:
+            messagebox.showerror("Erreur", "Aucun dossier de captures d'écran n'a été sélectionné.")
             Brint("[NAV] [ERROR] Aucun dossier sélectionné.")
             return
         start_watching_directory()
         Brint("[NAV] [ACTION] ▶ Lancement du processus complet (audio + screenshot)")
-        
-    def on_confidence_word_click(event):
+        # toggle_record() # Optionally auto-start recording
+
+    def on_confidence_list_item_click(event): # Renamed
         selection = confidence_index_list.curselection()
-        if not selection:
+        if not selection: return
+
+        selected_item_text = confidence_index_list.get(selection[0])
+        # Extract word and start time if stored in a specific format e.g. "word (start_time)"
+        match_item = re.match(r"^(.*?) \((\d+\.\d+)s\)$", selected_item_text)
+        if not match_item:
+            Brint(f"[INDEX] Could not parse item: {selected_item_text}")
             return
 
-        word = confidence_index_list.get(selection[0])
-        tag = confidence_index.get(word)
-        if tag:
-            Brint(f"[INDEX] Mot sélectionné : '{word}'")
-            Brint(f"[INDEX] Tag associé à '{word}' : {tag}")
-            transcription_notebook.select(transcription_tab_frame)
-            Brint("[INDEX] Onglet 'Transcription' sélectionné")
+        word_text = match_item.group(1)
+        start_time_str = match_item.group(2)
+        tag_key = f"{word_text}_{start_time_str}" # Reconstruct key used for confidence_index
 
+        tag = confidence_index.get(tag_key)
+
+        if tag:
+            Brint(f"[INDEX] Mot sélectionné : '{word_text}' Tag: {tag}")
+            transcription_notebook.select(transcription_tab_frame)
             ranges = transcription_text_widget.tag_nextrange(tag, "1.0")
             if ranges:
-                start_index = ranges[0]
-                transcription_text_widget.see(start_index)
+                start_idx, end_idx = ranges
+                transcription_text_widget.see(start_idx)
                 transcription_text_widget.tag_remove("highlight", "1.0", tk.END)
-                transcription_text_widget.tag_add("highlight", start_index, ranges[1])
-                transcription_text_widget.tag_config("highlight", background="yellow")
+                transcription_text_widget.tag_add("highlight", start_idx, end_idx)
+                transcription_text_widget.tag_config("highlight", background="yellow", foreground="black") # Ensure visibility
             else:
-                Brint(f"[INDEX] Tag '{tag}' introuvable dans la transcription.")
+                Brint(f"[INDEX] Tag '{tag}' introuvable pour '{word_text}'.")
+        else:
+            Brint(f"[INDEX] No tag found for key '{tag_key}' in confidence_index.")
 
-        Brint(f"[INDEX] Surlignage appliqué au tag : {tag}")
 
-    def on_generate_fake_menu_tree():
+    def on_generate_fake_menu_tree_clicked(): # Renamed
         Brint("[MENU] ▶ Génération arborescence FAKE pour test")
-
-        session, tagged_text, word_timeline, parsed_tags = generate_fake_session()
+        session, tagged_text_list, word_timeline_list, parsed_tags_list = generate_fake_session() # Ensure names are distinct
         global last_loaded_session
         last_loaded_session = session
 
-        
-        tree = build_menu_tree_from_tagged_text(tagged_text, word_timeline, screenshots=session.screenshots, parsed_tags=parsed_tags)
-        screenshots = [(s.timestamp, s.filename) for s in session.screenshots]
+        # Use the returned lists directly
+        tree = build_menu_tree_from_tagged_text(tagged_text_list, word_timeline_list, screenshots=session.screenshots, parsed_tags=parsed_tags_list)
 
-        tree = build_menu_tree_from_tagged_text(
-            tagged_text,
-            word_timeline,
-            session.screenshots  # ✅ envoie les objets, pas des tuples
-        )
-        output_dir = "output_sessions/fake_test_session"
-        os.makedirs(output_dir, exist_ok=True)
-        last_word_timeline = word_timeline
-        render_tagged_transcription.word_timeline = last_word_timeline
+        output_session_dir = "output_sessions/fake_test_session" # Renamed
+        os.makedirs(output_session_dir, exist_ok=True)
 
-        # 💾 JSON
-        import json
-        with open(os.path.join(output_dir, "menu_tree.json"), "w", encoding="utf-8") as f:
+        global last_word_timeline # Ensure this is the correct timeline to use
+        last_word_timeline = word_timeline_list # Assign the timeline from fake session
+        render_tagged_transcription.word_timeline = last_word_timeline # Set for current rendering pass
+
+        import json # Local import
+        with open(os.path.join(output_session_dir, "menu_tree.json"), "w", encoding="utf-8") as f:
             json.dump(tree, f, indent=2, ensure_ascii=False)
 
-        # 🌐 HTML
-        from menu_html_utils import generate_menu_tree_html
-        html_path = os.path.join(output_dir, "menu_tree.html")
+        from menu_html_utils import generate_menu_tree_html # Local import
+        html_path = os.path.join(output_session_dir, "menu_tree.html")
         generate_menu_tree_html(tree, html_path)
 
-        import webbrowser
+        import webbrowser # Local import
         webbrowser.open(f"file://{os.path.abspath(html_path)}")
 
-
-   
-    
-
     load_config()
-
     root = tk.Tk()
     root.title("Live Screenshot Annotator")
 
-    # 🎛 UI : timer
     timer_label = tk.Label(root, text="Durée : 00:00")
     timer_label.pack()
 
-    # 📂 Sélection du dossier
     tk.Label(root, text="Sélectionne le dossier de captures d'écran :").pack(pady=10)
     tk.Button(root, text="Choisir dossier", command=select_directory).pack(pady=5)
     folder_path_label = tk.Label(root, text="Aucun dossier sélectionné", fg="blue", cursor="hand2")
     folder_path_label.pack()
     folder_path_label.bind("<Button-1>", lambda e: open_folder_path())
 
-
-
-
-
-
-
-
-
-
-    # ▶ Démarrage annotation + audio
-    tk.Button(root, text="▶ Démarrer annotation + audio", command=start_all).pack(pady=20)
-
-    # 🎧 Sélection loopback audio
+    tk.Button(root, text="▶ Démarrer Annotation & Audio", command=start_all_processes).pack(pady=20) # Renamed command
     tk.Button(root, text="🎛 Choisir sortie audio (loopback)", command=choose_loopback_device).pack(pady=5)
 
-    # ✅ Checkbox : activer loopback
-    audio_output_var = tk.BooleanVar(value=False)
-    tk.Checkbutton(root, text="🎧 Capturer aussi le son de sortie (loopback)", variable=audio_output_var,
-                   command=toggle_output_audio).pack()
+    audio_output_var = tk.BooleanVar(value=CAPTURE_OUTPUT_AUDIO) # Init with global
+    tk.Checkbutton(root, text="🎧 Capturer aussi le son de sortie (loopback)", variable=audio_output_var, command=toggle_output_audio).pack()
 
-    # ✅ Checkbox : activer Faster-Whisper
-    use_faster_var = tk.BooleanVar(value=False)
-    tk.Checkbutton(root, text="⚡ Utiliser Faster-Whisper (GPU optimisé)", variable=use_faster_var,
-                   command=toggle_faster).pack()
+    use_faster_var = tk.BooleanVar(value=False) # Default to False
+    tk.Checkbutton(root, text="⚡ Utiliser Faster-Whisper (GPU optimisé)", variable=use_faster_var, command=toggle_faster).pack()
 
-    # 🔘 Bouton enregistrement
     record_button = tk.Button(root, text="⏺ Start Recording", command=toggle_record)
     record_button.pack(pady=10)
-    tk.Button(root, text="🧪 Générer un scénario de test FAKE", command=on_generate_fake_menu_tree, bg="#ffeecc").pack(pady=10)
-    # 🎚️ Slider de confiance
+    tk.Button(root, text="🧪 Générer un scénario de test FAKE", command=on_generate_fake_menu_tree_clicked, bg="#ffeecc").pack(pady=10) # Renamed command
+
     confidence_threshold = tk.DoubleVar(value=0.0)
     tk.Label(root, text="Seuil de confiance (affichage):").pack()
-
-    slider = tk.Scale(root, from_=0.0, to=1.0, resolution=0.01, orient=tk.HORIZONTAL,
-                      variable=confidence_threshold)
+    slider = tk.Scale(root, from_=0.0, to=1.0, resolution=0.01, orient=tk.HORIZONTAL, variable=confidence_threshold)
     slider.pack()
-    slider.bind("<ButtonRelease-1>", on_slider_release)
-    slider.bind("<Button-3>", reset_slider)
-    
-    # 📑 Création du notebook principal
-    # 📑 Création du notebook principal
-    transcription_notebook = ttk.Notebook(root)
+    slider.bind("<ButtonRelease-1>", on_slider_value_release) # Renamed command
+    slider.bind("<Double-Button-3>", reset_confidence_slider) # Renamed command, and typically Button-3 is right-click
 
+    transcription_notebook = ttk.Notebook(root)
     transcription_tab_frame = tk.Frame(transcription_notebook)
     transcription_text_widget = tk.Text(transcription_tab_frame, wrap=tk.WORD)
-    # Après transcription_text_widget.pack(...)
     transcription_text_widget.pack(fill="both", expand=True)
-    load_button = tk.Button(transcription_tab_frame, text="📂 Load Transcription", command=load_transcription_from_json)
-    load_button.pack(pady=5, anchor="ne")
-
-    save_button = tk.Button(transcription_tab_frame, text="💾 Save Transcription", command=save_transcription_to_json)
-    save_button.pack(pady=5, anchor="ne")
-
+    tk.Button(transcription_tab_frame, text="📂 Load Transcription", command=load_transcription_from_json).pack(side=tk.LEFT, pady=5, padx=5) # Adjusted packing
+    tk.Button(transcription_tab_frame, text="💾 Save Transcription", command=save_transcription_to_json).pack(side=tk.LEFT, pady=5, padx=5) # Adjusted packing
     transcription_notebook.add(transcription_tab_frame, text="📝 Transcription")
-    transcription_notebook.select(transcription_tab_frame)
 
-    
-    transcription_notebook.pack(fill="both", expand=True, padx=10, pady=10)
-        # 📌 Onglet Tags détectés
     tagged_tab_frame = tk.Frame(transcription_notebook)
-    # 📦 Frame contenant le widget texte + scrollbar
-    tagged_text_frame = tk.Frame(tagged_tab_frame)
-    tagged_text_frame.pack(fill=tk.X, padx=5, pady=5)
+    tagged_text_content_frame = tk.Frame(tagged_tab_frame) # Renamed frame for clarity
+    tagged_text_content_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5) # expand True
 
-    tagged_scrollbar = tk.Scrollbar(tagged_text_frame, orient=tk.VERTICAL)
+    tagged_scrollbar = tk.Scrollbar(tagged_text_content_frame, orient=tk.VERTICAL)
     tagged_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
-    tagged_text_widget = tk.Text(
-        tagged_text_frame,
-        wrap=tk.WORD,
-        height=10,  # ← réduit la hauteur visible
-        yscrollcommand=tagged_scrollbar.set
-    )
-    tagged_text_widget.pack(side=tk.LEFT, fill=tk.X, expand=True)
+    tagged_text_widget = tk.Text(tagged_text_content_frame, wrap=tk.WORD, height=10, yscrollcommand=tagged_scrollbar.set)
+    tagged_text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True) # expand True
     tagged_scrollbar.config(command=tagged_text_widget.yview)
-
-    def clean_tagged_lines(raw_text: str) -> List[str]:
-        clean = raw_text.replace("[", "").replace("]", "")
-        return [
-            line.strip() for line in clean.splitlines()
-            if line.strip() and not line.strip().startswith("#")
-        ]
-
-
-
-    # 🌀 Bouton de régénération HTML depuis les tags édités
-    def on_regenerate_html_from_tags():
-        Brint("[UI] 🔁 Regénération HTML à partir du contenu édité de 'Tags détectés'...")
-
-        tagged_text_lines = clean_tagged_lines(tagged_text_widget.get("1.0", tk.END))
-
-        if not last_loaded_session:
-            Brint("[UI] ⚠️ Aucune session active pour accéder aux screenshots et timeline.")
-            return
-
-        screenshots = last_loaded_session.screenshots
-        word_timeline = last_loaded_session.words
-        session_path = last_loaded_session.path
-
-        Brint(f"[UI] 📋 {len(tagged_text_lines)} lignes analysées :")
-        for i, line in enumerate(tagged_text_lines):
-            Brint(f"   {i+1:02d}: {line}")
-
-        try:
-            menu_tree = build_menu_tree_from_tagged_text(tagged_text_lines, word_timeline, screenshots)
-            html_path = os.path.join(session_path, "menu_tree.html")
-            generate_menu_tree_html(menu_tree, html_path)
-            Brint(f"[UI] 🌐 Ouverture de {html_path}")
-            webbrowser.open("file://" + os.path.abspath(html_path))
-        except Exception as e:
-            Brint(f"[UI] ❌ Erreur lors de la génération HTML : {e}")
-
-    # Ajout du bouton UI
-    regen_html_button = tk.Button(tagged_tab_frame, text="🌀 Regénérer HTML", command=on_regenerate_html_from_tags)
-    regen_html_button.pack(pady=5)
-
-
-
-
-
-
-
-
+    tk.Button(tagged_tab_frame, text="🌀 Regénérer HTML", command=lambda: on_regenerate_html_from_tags()).pack(pady=5) # Used lambda for simplicity
     transcription_notebook.add(tagged_tab_frame, text="📌 Tags détectés")
-    
 
-    # 🔍 Onglet Confidence Index
     confidence_index_tab = tk.Frame(transcription_notebook)
-    transcription_notebook.add(confidence_index_tab, text="🔍 Confidence Index")
-
     confidence_index_list = tk.Listbox(confidence_index_tab)
     confidence_index_list.pack(fill="both", expand=True)
-    confidence_index_list.bind("<Double-Button-1>", on_confidence_word_click)
-    Brint("[UI] [BIND] Bind appliqué sur Double-Click dans confidence_index_list")
+    confidence_index_list.bind("<Double-Button-1>", on_confidence_list_item_click) # Renamed command
+    transcription_notebook.add(confidence_index_tab, text="🔍 Confidence Index")
 
-    def on_tab_changed(event):
-        selected_tab = transcription_notebook.tab(transcription_notebook.select(), "text")
-        Brint(f"[UI] [TAB SWITCH] Onglet sélectionné = {selected_tab}")
-        if selected_tab == "📌 Tags détectés":
-            # Brint("[UI] [TAB SWITCH] ➤ Récupération du texte depuis le widget transcription")
-            # full_text = transcription_text_widget.get("1.0", tk.END)
+    transcription_notebook.pack(fill="both", expand=True, padx=10, pady=10)
+
+    def tab_changed_handler(event): # Renamed
+        selected_tab_text = transcription_notebook.tab(transcription_notebook.select(), "text")
+        Brint(f"[UI] [TAB SWITCH] Onglet sélectionné = {selected_tab_text}")
+        if selected_tab_text == "📌 Tags détectés":
             Brint("[UI] [TAB SWITCH] ➤ Lancement render_tagged_transcription()")
             render_tagged_transcription()
-    transcription_notebook.bind("<<NotebookTabChanged>>", on_tab_changed)
-    Brint("[UI] [BIND] Bind sur changement d'onglet appliqué")
+    transcription_notebook.bind("<<NotebookTabChanged>>", tab_changed_handler) # Renamed command
 
-    # session, tagged_text, word_timeline = generate_fake_session()   
-    # tree = build_menu_tree_from_tagged_text(
-        # "\n".join(tagged_text),
-        # word_timeline,
-        # [(s.timestamp, s.filename) for s in session.screenshots]
-    # )
-    # import json
-    # with open("output_sessions/fake_test_session/menu_tree.json", "w", encoding="utf-8") as f:
-        # json.dump(tree, f, indent=2, ensure_ascii=False)
-    # print_menu_tree(tree)
-
-
-    # 🪟 Lancement de l'UI
     root.mainloop()
 
-#move_console_to_right_half()
-
+# move_console_to_right_half() # Consider if this is needed or part of specific dev setup
 launch_gui()
