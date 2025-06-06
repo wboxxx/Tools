@@ -351,10 +351,10 @@ def load_transcription_from_json():
     except Exception as e:
         Brint("[LOAD JSON] [ERROR]", str(e))
         messagebox.showerror("Erreur", f"Impossible de charger le fichier JSON : {str(e)}")
-def save_transcription_to_json():
-    if not last_transcribed_wav_path:
-        messagebox.showwarning("Avertissement", "Aucune transcription à sauvegarder.")
-        return
+    def save_transcription_to_json():
+        if not last_transcribed_wav_path:
+            messagebox.showwarning("Avertissement", "Aucune transcription à sauvegarder.")
+            return
 
     output_path = last_transcribed_wav_path.replace(".wav", "_transcription.json")
 
@@ -391,6 +391,16 @@ def save_transcription_to_json():
     except Exception as e:
         Brint("[SAVE] [ERROR]", str(e))
         messagebox.showerror("Erreur", f"Échec de la sauvegarde : {str(e)}")
+
+def select_wav_and_transcribe():
+    """Open a dialog to choose a WAV file and transcribe it."""
+    wav_path = filedialog.askopenfilename(
+        title="Choisir un fichier WAV",
+        filetypes=[("Fichiers WAV", "*.wav")]
+    )
+    if wav_path:
+        Brint("[TRANSCRIBE] [FILE SELECTED]", wav_path)
+        transcribe_file(wav_path)
 
 def Brint(*args, **kwargs):
     if not args:
@@ -953,6 +963,7 @@ def launch_gui():
 
     record_button = tk.Button(root, text="⏺ Start Recording", command=toggle_record)
     record_button.pack(pady=10)
+    tk.Button(root, text="🎙️ Transcrire un fichier WAV", command=select_wav_and_transcribe).pack(pady=5)
     tk.Button(root, text="🧪 Générer un scénario de test FAKE", command=on_generate_fake_menu_tree_clicked, bg="#ffeecc").pack(pady=10) # Renamed command
 
     confidence_threshold = tk.DoubleVar(value=0.0)
