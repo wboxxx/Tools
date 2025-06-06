@@ -12,6 +12,7 @@ class Word:
     start: float
     confidence: float
     color: str = "black"
+    speaker: Optional[str] = None
 
 @dataclass
 class Screenshot:

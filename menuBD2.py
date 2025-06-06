@@ -679,6 +679,27 @@ def toggle_record():
         Brint("[AUDIO] [RECORDING] ✅ Enregistrement terminé :", wav_path)
         transcribe_file(wav_path)
 
+def diarize_speakers(wav_path):
+    """Return list of speaker segments using pyannote pipeline."""
+    try:
+        from pyannote.audio import Pipeline
+    except Exception as exc:
+        Brint("[DIARIZATION] pyannote.audio not available:", str(exc))
+        return []
+
+    try:
+        pipeline = Pipeline.from_pretrained("pyannote/speaker-diarization")
+        diarization = pipeline(wav_path)
+    except Exception as exc:
+        Brint("[DIARIZATION] Error during diarization:", str(exc))
+        return []
+
+    segments = []
+    for turn, _, speaker in diarization.itertracks(yield_label=True):
+        segments.append({"start": turn.start, "end": turn.end, "speaker": speaker})
+    Brint(f"[DIARIZATION] Detected {len(segments)} segments")
+    return segments
+
 def transcribe_file(wav_path):
     from session_data import SessionData, Word, Screenshot # Moved import
     global last_transcribed_wav_path
@@ -696,6 +717,14 @@ def transcribe_file(wav_path):
         audio_path=wav_path
     )
 
+    speaker_segments = diarize_speakers(wav_path)
+
+    def get_speaker(timestamp: float):
+        for seg in speaker_segments:
+            if seg["start"] <= timestamp <= seg["end"]:
+                return seg["speaker"]
+        return None
+
     def insert_word_to_widget(word_text, start, conf): # Renamed for clarity
         color = "black" if conf > 0.8 else "orange" if conf > 0.5 else "red"
         tag = f"word_{start:.2f}"
@@ -708,7 +737,8 @@ def transcribe_file(wav_path):
             confidence_index[f"{word_text}_{start}"] = tag # More unique key
             confidence_index_list.insert(tk.END, f"{word_text} ({start:.2f}s)")
 
-        session.words.append(Word(text=word_text, start=start, confidence=conf, color=color))
+        speaker = get_speaker(start)
+        session.words.append(Word(text=word_text, start=start, confidence=conf, color=color, speaker=speaker))
 
     use_faster = use_faster_var.get() if use_faster_var else False
     if use_faster:
