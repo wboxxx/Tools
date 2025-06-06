@@ -351,10 +351,13 @@ def load_transcription_from_json():
     except Exception as e:
         Brint("[LOAD JSON] [ERROR]", str(e))
         messagebox.showerror("Erreur", f"Impossible de charger le fichier JSON : {str(e)}")
-    def save_transcription_to_json():
-        if not last_transcribed_wav_path:
-            messagebox.showwarning("Avertissement", "Aucune transcription à sauvegarder.")
-            return
+
+
+def save_transcription_to_json():
+    if not last_transcribed_wav_path:
+        messagebox.showwarning("Avertissement", "Aucune transcription à sauvegarder.")
+        return
+
 
     output_path = last_transcribed_wav_path.replace(".wav", "_transcription.json")
 
