@@ -741,9 +741,17 @@ def diarize_speakers(wav_path):
         return []
 
     try:
+        token = None
+        if os.path.exists("secret.js"):
+            Brint("[DIARIZATION] Reading token from secret.js")
+            with open("secret.js", "r") as f:
+                secret_content = f.read()
+            match = re.search(r"token\s*[:=]\s*['\"](.+?)['\"]", secret_content)
+            if match:
+                token = match.group(1).strip()
         pipeline = Pipeline.from_pretrained(
             "pyannote/speaker-diarization",
-            use_auth_token="token"  # mets ton vrai token ici
+            use_auth_token=token or "token"
         )
         diarization = pipeline(wav_path)
     except Exception as exc:
