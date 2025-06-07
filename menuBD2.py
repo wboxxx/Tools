@@ -104,6 +104,7 @@ stream = None
 audio_output_var = None  # Variable liée à la checkbox loopback
 CAPTURE_OUTPUT_AUDIO = False
 use_faster_var = None
+diarization_var = None
 
 timer_label = None
 record_start_time = None
@@ -767,7 +768,11 @@ def transcribe_file(wav_path):
         audio_path=wav_path
     )
 
-    speaker_segments = diarize_speakers(wav_path)
+    if diarization_var and diarization_var.get():
+        speaker_segments = diarize_speakers(wav_path)
+    else:
+        Brint("[DIARIZATION] Skipping speaker identification")
+        speaker_segments = []
 
     def get_speaker(timestamp: float):
         for seg in speaker_segments:
@@ -881,7 +886,7 @@ def update_timer():
 
 
 def launch_gui():
-    global timer_label, audio_output_var, record_button, use_faster_var, confidence_threshold
+    global timer_label, audio_output_var, record_button, use_faster_var, confidence_threshold, diarization_var
     global transcription_notebook, confidence_index_tab, confidence_index_list, confidence_index
     global transcription_tab_frame, transcription_text_widget, tagged_tab_frame, tagged_text_widget
     global folder_path_label, last_word_timeline
@@ -896,6 +901,9 @@ def launch_gui():
 
     def toggle_faster():
         Brint(f"[TRANSCRIBE] [OPTION] Utiliser faster-whisper = {use_faster_var.get()}")
+
+    def toggle_diarization():
+        Brint(f"[DIARIZATION] [OPTION] Identifier les speakers = {diarization_var.get()}")
 
     def update_confidence_display_on_slider(val_str): # Renamed to avoid conflict
         val = float(val_str)
@@ -1014,6 +1022,9 @@ def launch_gui():
 
     use_faster_var = tk.BooleanVar(value=False) # Default to False
     tk.Checkbutton(root, text="⚡ Utiliser Faster-Whisper (GPU optimisé)", variable=use_faster_var, command=toggle_faster).pack()
+
+    diarization_var = tk.BooleanVar(value=False)
+    tk.Checkbutton(root, text="🗣 Identifier les speakers", variable=diarization_var, command=toggle_diarization).pack()
 
     record_button = tk.Button(root, text="⏺ Start Recording", command=toggle_record)
     record_button.pack(pady=10)
