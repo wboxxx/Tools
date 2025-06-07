@@ -27,7 +27,8 @@ from utils import Brint  # ou adapte selon ton import
 from PIL import Image, ImageDraw
 import webbrowser
 from typing import List
-import openai
+from openai import OpenAI
+openai_client = OpenAI()
 
 
 
@@ -41,7 +42,6 @@ from tkinter import simpledialog
 
 # Ajoute ceci au début de ton script ou dans une section de config
 import os
-import openai
 from huggingface_hub import login
 import os
 print(os.getcwd())
@@ -64,7 +64,7 @@ load_huggingface_token()
 def load_openai_api_key_from_file():
     """
     Charge la clé OpenAI depuis le fichier .openai_key si présent.
-    Associe la clé à openai.api_key et à la variable d'environnement.
+    Associe la clé à openai_client.api_key et à la variable d'environnement.
     Retourne True si la clé a été chargée, sinon False.
     """
     try:
@@ -73,7 +73,7 @@ def load_openai_api_key_from_file():
                 key = f.read().strip()
                 if key:
                     os.environ["OPENAI_API_KEY"] = key
-                    openai.api_key = key
+                    openai_client.api_key = key
                     print("[OPENAI] Clé API chargée avec succès depuis .openai_key")
                     return True
     except Exception as e:
@@ -84,7 +84,6 @@ def load_openai_api_key_from_file():
 # Appelle cette fonction tôt dans ton script pour initialiser la clé OpenAI
 load_openai_api_key_from_file()
 import os
-import openai
 from tkinter import simpledialog
 
 def load_openai_api_key_from_file():
@@ -94,7 +93,7 @@ def load_openai_api_key_from_file():
                 key = f.read().strip()
                 if key:
                     os.environ["OPENAI_API_KEY"] = key
-                    openai.api_key = key
+                    openai_client.api_key = key
                     return True
     except Exception as e:
         print(f"[OPENAI] Erreur lecture clé API: {e}")
@@ -992,8 +991,8 @@ def send_transcription_to_chatgpt(text: str, wav_path: str) -> None:
         if not api_key:
             Brint("[OPENAI] No API key found in OPENAI_API_KEY")
             return
-        openai.api_key = api_key
-        resp = openai.ChatCompletion.create(
+        openai_client.api_key = api_key
+        resp = openai_client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": text}],
         )
@@ -1111,7 +1110,7 @@ def launch_gui():
                 try:
                     with open(".openai_key", "w") as f:
                         f.write(new_key.strip())
-                    openai.api_key = new_key.strip()
+                    openai_client.api_key = new_key.strip()
                     os.environ["OPENAI_API_KEY"] = new_key.strip()
                     openai_key_status_label.config(text="✅ Clé API : chargée", fg="green")
                 except Exception as e:
