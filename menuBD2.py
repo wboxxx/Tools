@@ -27,6 +27,23 @@ from PIL import Image, ImageDraw
 import webbrowser
 from typing import List
 
+# 1. visit hf.co/pyannote/speaker-diarization and accept user conditions
+# 2. visit hf.co/pyannote/segmentation and accept user conditions
+# 3. visit hf.co/settings/tokens to create an access token
+# 4. instantiate pretrained speaker diarization pipeline
+from pyannote.audio import Pipeline
+# use_auth_token="secrettoken")
+
+
+# apply the pipeline to an audio file
+# diarization = pipeline("audio.wav")
+
+# dump the diarization output to disk using RTTM format
+# with open("audio.rttm", "w") as rttm:
+    # diarization.write_rttm(rttm)
+
+
+
 last_loaded_session = None
 
 
@@ -692,6 +709,7 @@ def toggle_record():
         Brint("[AUDIO] [RECORDING] ✅ Enregistrement terminé :", wav_path)
         transcribe_file(wav_path)
 
+
 def diarize_speakers(wav_path):
     """Return list of speaker segments using pyannote pipeline."""
     try:
@@ -701,7 +719,10 @@ def diarize_speakers(wav_path):
         return []
 
     try:
-        pipeline = Pipeline.from_pretrained("pyannote/speaker-diarization")
+        pipeline = Pipeline.from_pretrained(
+            "pyannote/speaker-diarization",
+            use_auth_token="token"  # mets ton vrai token ici
+        )
         diarization = pipeline(wav_path)
     except Exception as exc:
         Brint("[DIARIZATION] Error during diarization:", str(exc))
@@ -712,6 +733,8 @@ def diarize_speakers(wav_path):
         segments.append({"start": turn.start, "end": turn.end, "speaker": speaker})
     Brint(f"[DIARIZATION] Detected {len(segments)} segments")
     return segments
+
+
 
 def transcribe_file(wav_path):
     from session_data import SessionData, Word, Screenshot # Moved import
@@ -755,22 +778,25 @@ def transcribe_file(wav_path):
 
     use_faster = use_faster_var.get() if use_faster_var else False
     if use_faster:
-        Brint("[TRANSCRIBE] [MODE] ➤ Using faster-whisper")
+        Brint("[TRANSCRIBE] [MODE] ➤ Using faster-whisper (CUDA forcé)")
         try:
             import torch
-            # from faster_whisper import WhisperModel # Already imported at top
-            model_size = "base"
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-            Brint("[FASTER] Initialisation du modèle sur :", device)
+            from faster_whisper import WhisperModel
 
-            faster_model = WhisperModel(model_size, compute_type="float16" if device == "cuda" else "int8", device=device) # Adjusted compute_type for CPU
+            # FORCE GPU + FLOAT16
+            device = "cuda"
+            compute_type = "float16"
+
+            Brint(f"[FASTER] Initialisation du modèle sur : {device} ({compute_type})")
+
+            faster_model = WhisperModel("base", device=device, compute_type=compute_type)
             segments, info = faster_model.transcribe(
                 wav_path, language="fr", beam_size=5, word_timestamps=True
             )
 
             current_word_timeline = []
             for segment in segments:
-                for word_obj in segment.words: # word is an object
+                for word_obj in segment.words:
                     word_text = word_obj.word
                     start = word_obj.start
                     conf = word_obj.probability or 1.0
@@ -780,17 +806,27 @@ def transcribe_file(wav_path):
                     current_word_timeline.append({"word": word_text, "start": start})
             render_tagged_transcription.word_timeline = current_word_timeline
 
-
         except Exception as e:
             Brint("[TRANSCRIBE] [ERROR - FASTER]", str(e))
             transcription_text_widget.insert(tk.END, f"[ERREUR FASTER-WHISPER] {str(e)}\n")
             return
+
+
     else:
-        Brint("[TRANSCRIBE] [MODE] ➤ Using classic Whisper")
+        Brint("[TRANSCRIBE] [MODE] ➤ Using classic Whisper (CUDA forcé)")
         try:
-            result = model.transcribe(
-                wav_path, language="fr", fp16=False, temperature=0, beam_size=5, word_timestamps=True
+            import whisper
+            model_gpu = whisper.load_model("base", device="cuda")  # ← GPU forcé ici
+
+            result = model_gpu.transcribe(
+                wav_path,
+                language="fr",
+                fp16=True,  # ← float16 (accélération sur GPU)
+                temperature=0,
+                beam_size=5,
+                word_timestamps=True
             )
+
             current_word_timeline = []
             segments = result.get("segments", [])
             for seg in segments:
@@ -804,11 +840,12 @@ def transcribe_file(wav_path):
                     current_word_timeline.append({"word": word, "start": start})
             render_tagged_transcription.word_timeline = current_word_timeline
 
-
         except Exception as e:
-            Brint("[TRANSCRIBE] [ERROR]", str(e))
+            Brint("[TRANSCRIBE] [ERROR - WHISPER CLASSIC]", str(e))
             transcription_text_widget.insert(tk.END, f"[ERREUR Whisper classique] {str(e)}\n")
             return
+
+
 
     render_tagged_transcription() # Call after transcription is done and timeline is set
 
