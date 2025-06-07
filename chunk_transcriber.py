@@ -27,6 +27,8 @@ def split_wav_into_chunks(path: str, chunk_length: int = 300) -> List[str]:
     temp_dir = tempfile.mkdtemp(prefix="wav_chunks_")
     chunk_paths = []
 
+    print(f"Cutting '{path}' into {num_chunks} chunks of {chunk_length}s ...")
+
     # Verify that ffmpeg is installed and accessible
     if not shutil.which("ffmpeg"):
         raise RuntimeError("ffmpeg not found. Please install ffmpeg and ensure it is in your PATH.")
@@ -34,6 +36,7 @@ def split_wav_into_chunks(path: str, chunk_length: int = 300) -> List[str]:
     for idx in range(num_chunks):
         start = idx * chunk_length
         output = os.path.join(temp_dir, f"chunk_{idx:04d}.wav")
+        print(f"  -> generating chunk {idx + 1}/{num_chunks}")
         cmd = [
             "ffmpeg",
             "-y",
@@ -92,7 +95,9 @@ def transcribe_wav_in_chunks(path: str, output_path: str = "transcript.txt", chu
         text = transcribe_chunks(chunk_paths, use_faster=use_faster)
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(text)
-        return output_path
+        abs_out = os.path.abspath(output_path)
+        print(f"Translation written to: {abs_out}")
+        return abs_out
     except Exception as e:
         raise RuntimeError(f"Transcription failed: {e}") from e
     finally:
