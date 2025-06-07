@@ -27,6 +27,7 @@ from utils import Brint  # ou adapte selon ton import
 from PIL import Image, ImageDraw
 import webbrowser
 from typing import List
+import openai
 
 # 1. visit hf.co/pyannote/speaker-diarization and accept user conditions
 # 2. visit hf.co/pyannote/segmentation and accept user conditions
@@ -105,6 +106,7 @@ audio_output_var = None  # Variable liée à la checkbox loopback
 CAPTURE_OUTPUT_AUDIO = False
 use_faster_var = None
 diarization_var = None
+send_to_openai_var = None
 
 timer_label = None
 record_start_time = None
@@ -428,6 +430,9 @@ def select_wav_and_transcribe():
     if wav_path:
         Brint("[TRANSCRIBE] [FILE SELECTED]", wav_path)
         transcribe_file(wav_path)
+        if send_to_openai_var and send_to_openai_var.get():
+            text = transcription_text_widget.get("1.0", tk.END)
+            send_transcription_to_chatgpt(text, wav_path)
 
 def select_wav_and_transcribe_chunked():
     """Choose a WAV file and transcribe it in 5 min chunks."""
@@ -441,6 +446,13 @@ def select_wav_and_transcribe_chunked():
         use_faster = use_faster_var.get() if use_faster_var else False
         transcribe_wav_in_chunks(wav_path, output_path=out_path, use_faster=use_faster)
         messagebox.showinfo("Transcription", f"Transcript saved to {out_path}")
+        if send_to_openai_var and send_to_openai_var.get():
+            try:
+                with open(out_path, "r", encoding="utf-8") as f:
+                    text = f.read()
+                send_transcription_to_chatgpt(text, wav_path)
+            except Exception as e:
+                Brint("[OPENAI] Error reading transcript:", str(e))
 
 def Brint(*args, **kwargs):
     if not args:
@@ -890,6 +902,30 @@ def transcribe_file(wav_path):
     from session_view_generator import generate_session_view
     generate_session_view(session)
 
+    if send_to_openai_var and send_to_openai_var.get():
+        transcript_text = transcription_text_widget.get("1.0", tk.END)
+        send_transcription_to_chatgpt(transcript_text, wav_path)
+
+def send_transcription_to_chatgpt(text: str, wav_path: str) -> None:
+    """Send *text* to OpenAI ChatGPT and save the response next to *wav_path*."""
+    try:
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            Brint("[OPENAI] No API key found in OPENAI_API_KEY")
+            return
+        openai.api_key = api_key
+        resp = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": text}],
+        )
+        answer = resp.choices[0].message["content"]
+        out_path = os.path.splitext(wav_path)[0] + "_chatgpt.txt"
+        with open(out_path, "w", encoding="utf-8") as f:
+            f.write(answer)
+        Brint(f"[OPENAI] Réponse sauvegardée : {out_path}")
+    except Exception as e:
+        Brint("[OPENAI] Error:", str(e))
+
 def update_timer():
     global timer_running, record_start_time, timer_label
     if timer_running:
@@ -904,7 +940,7 @@ def launch_gui():
     global timer_label, audio_output_var, record_button, use_faster_var, confidence_threshold, diarization_var
     global transcription_notebook, confidence_index_tab, confidence_index_list, confidence_index
     global transcription_tab_frame, transcription_text_widget, tagged_tab_frame, tagged_text_widget
-    global folder_path_label, last_word_timeline
+    global folder_path_label, last_word_timeline, send_to_openai_var
 
     last_word_timeline = []
 
@@ -1040,6 +1076,9 @@ def launch_gui():
 
     diarization_var = tk.BooleanVar(value=False)
     tk.Checkbutton(root, text="🗣 Identifier les speakers", variable=diarization_var, command=toggle_diarization).pack()
+
+    send_to_openai_var = tk.BooleanVar(value=False)
+    tk.Checkbutton(root, text="💬 Envoyer la transcription à ChatGPT", variable=send_to_openai_var).pack()
 
     record_button = tk.Button(root, text="⏺ Start Recording", command=toggle_record)
     record_button.pack(pady=10)
