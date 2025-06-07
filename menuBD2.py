@@ -29,6 +29,85 @@ import webbrowser
 from typing import List
 import openai
 
+
+
+
+
+# Ajoute ceci au début de ton script ou dans une section de config
+import os
+from tkinter import simpledialog
+
+# Fonction pour charger ou demander la clé OpenAI
+
+# Ajoute ceci au début de ton script ou dans une section de config
+import os
+import openai
+from huggingface_hub import login
+import os
+print(os.getcwd())
+
+def load_huggingface_token():
+    try:
+        token_path = os.path.join(os.path.dirname(__file__), ".hf_token")
+        with open(token_path, "r", encoding="utf-8") as f:
+            token = f.read().strip()
+            if token.startswith("hf_"):
+                login(token)
+                print("[HF] ✅ Token HuggingFace chargé avec succès")
+                return True
+    except Exception as e:
+        print("[HF] ❌ Erreur lecture token :", e)
+    return False
+
+load_huggingface_token()
+
+def load_openai_api_key_from_file():
+    """
+    Charge la clé OpenAI depuis le fichier .openai_key si présent.
+    Associe la clé à openai.api_key et à la variable d'environnement.
+    Retourne True si la clé a été chargée, sinon False.
+    """
+    try:
+        if os.path.exists(".openai_key"):
+            with open(".openai_key", "r") as f:
+                key = f.read().strip()
+                if key:
+                    os.environ["OPENAI_API_KEY"] = key
+                    openai.api_key = key
+                    print("[OPENAI] Clé API chargée avec succès depuis .openai_key")
+                    return True
+    except Exception as e:
+        print(f"[OPENAI] Erreur lecture clé API: {e}")
+    print("[OPENAI] Clé non présente ou vide")
+    return False
+
+# Appelle cette fonction tôt dans ton script pour initialiser la clé OpenAI
+load_openai_api_key_from_file()
+import os
+import openai
+from tkinter import simpledialog
+
+def load_openai_api_key_from_file():
+    try:
+        if os.path.exists(".openai_key"):
+            with open(".openai_key", "r") as f:
+                key = f.read().strip()
+                if key:
+                    os.environ["OPENAI_API_KEY"] = key
+                    openai.api_key = key
+                    return True
+    except Exception as e:
+        print(f"[OPENAI] Erreur lecture clé API: {e}")
+    return False
+
+
+# Appelle cette fonction très tôt dans ton code (après les imports par exemple)
+# load_openai_api_key()
+load_openai_api_key_from_file()
+
+
+
+
 # 1. visit hf.co/pyannote/speaker-diarization and accept user conditions
 # 2. visit hf.co/pyannote/segmentation and accept user conditions
 # 3. visit hf.co/settings/tokens to create an access token
@@ -1023,6 +1102,23 @@ def launch_gui():
                 Brint(f"[INDEX] Tag '{tag}' introuvable pour '{word_text}'.")
         else:
             Brint(f"[INDEX] No tag found for key '{tag_key}' in confidence_index.")
+    def check_or_prompt_openai_key():
+        if load_openai_api_key_from_file():
+            openai_key_status_label.config(text="✅ Clé API : chargée", fg="green")
+        else:
+            new_key = simpledialog.askstring("Clé API OpenAI", "Entre ta clé OpenAI :")
+            if new_key:
+                try:
+                    with open(".openai_key", "w") as f:
+                        f.write(new_key.strip())
+                    openai.api_key = new_key.strip()
+                    os.environ["OPENAI_API_KEY"] = new_key.strip()
+                    openai_key_status_label.config(text="✅ Clé API : chargée", fg="green")
+                except Exception as e:
+                    Brint("[OPENAI] Erreur de sauvegarde :", e)
+            else:
+                openai_key_status_label.config(text="❌ Clé API non définie", fg="red")
+
 
 
     def on_generate_fake_menu_tree_clicked(): # Renamed
@@ -1064,6 +1160,16 @@ def launch_gui():
     folder_path_label = tk.Label(root, text="Aucun dossier sélectionné", fg="blue", cursor="hand2")
     folder_path_label.pack()
     folder_path_label.bind("<Button-1>", lambda e: open_folder_path())
+    openai_key_status_label = tk.Label(root, text="🔒 Clé API : non chargée", fg="red")
+    openai_key_status_label.pack()
+    # Mise à jour visuelle immédiate du statut de la clé API
+    key = os.getenv("OPENAI_API_KEY", "")
+    if key.startswith("sk-"):
+        openai_key_status_label.config(text="✅ Clé API : chargée", fg="green")
+    else:
+        openai_key_status_label.config(text="🔒 Clé API : non chargée", fg="red")
+
+    tk.Button(root, text="🔑 Vérifier / définir clé OpenAI", command=check_or_prompt_openai_key).pack(pady=5)
 
     tk.Button(root, text="▶ Démarrer Annotation & Audio", command=start_all_processes).pack(pady=20) # Renamed command
     tk.Button(root, text="🎛 Choisir sortie audio (loopback)", command=choose_loopback_device).pack(pady=5)
@@ -1130,6 +1236,13 @@ def launch_gui():
     transcription_notebook.bind("<<NotebookTabChanged>>", tab_changed_handler) # Renamed command
 
     root.mainloop()
+    check_or_prompt_openai_key()
+    # Vérification UI après le chargement
+    # # if "OPENAI_API_KEY" in os.environ and os.environ["OPENAI_API_KEY"].startswith("sk-"):
+        # # openai_key_status_label.config(text="✅ Clé API : chargée", fg="green")
+    # # else:
+        # # openai_key_status_label.config(text="🔒 Clé API : non chargée", fg="red")
+
 
 # move_console_to_right_half() # Consider if this is needed or part of specific dev setup
 launch_gui()
