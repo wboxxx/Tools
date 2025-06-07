@@ -114,12 +114,12 @@ last_transcribed_wav_path = None
 confidence_index = {}  # clé = mot, valeur = (tab_frame, tag)
 
 def format_tags_for_display(raw_text: str) -> List[int]:
-    # Brint(f"[CR DEBUG] Raw text for index finding: '{raw_text}'")
+    Brint(f"[TAG FORMATTER] Raw text length: {len(raw_text)}")
     pattern = re.compile(r'(?<!^)(?<!\r\n)(?<!\n)(?<!\r)(\[TANGO\])') # Pattern remains as is
     indices = []
     for match in pattern.finditer(raw_text):
         indices.append(match.start(0)) # MODIFIED LINE: Get start index of the entire match for '[TANGO]'
-    # Brint(f"[CR DEBUG] Found indices for TANGO: {indices}")
+    Brint(f"[TAG FORMATTER] Found indices for TANGO: {indices}")
     indices.sort(reverse=True) # Sort in reverse order for safe insertion
     return indices
 
@@ -148,6 +148,7 @@ def get_screenshots_with_timestamps():
     import os
     import re
 
+    Brint(f"[SCREENSHOT] Scanning {selected_screenshot_dir}")
     screenshots = []
     pattern = re.compile(r"(\d+)_(\d+)_(\d+)")  # ex: 00_01_23
 
@@ -161,7 +162,9 @@ def get_screenshots_with_timestamps():
                 h, m, s = map(int, match.groups())
                 seconds = h * 3600 + m * 60 + s
                 screenshots.append((seconds, fname))
-    return sorted(screenshots)
+    screenshots_sorted = sorted(screenshots)
+    Brint(f"[SCREENSHOT] Found {len(screenshots_sorted)} screenshots")
+    return screenshots_sorted
 
 
 def select_directory():
@@ -191,8 +194,10 @@ def load_config():
 def update_folder_path_label():
     if selected_screenshot_dir:
         folder_path_label.config(text=selected_screenshot_dir)
+        Brint(f"[UI] Folder label set to {selected_screenshot_dir}")
     else:
         folder_path_label.config(text="Aucun dossier sélectionné")
+        Brint("[UI] Folder label cleared")
 
 
 def save_config():
@@ -512,6 +517,7 @@ def open_folder_path():
     import os
     import subprocess
     if selected_screenshot_dir and os.path.exists(selected_screenshot_dir):
+        Brint(f"[NAV] Opening folder {selected_screenshot_dir}")
         subprocess.Popen(f'explorer "{selected_screenshot_dir}"')
 
 # def select_directory(): # This function is duplicated, removing one
@@ -565,6 +571,7 @@ def update_json_structure(image_path):
 
 def audio_callback(indata, frames, time_info, status):
     global recorded_frames
+    Brint(f"[AUDIO] Callback {frames} frames")
     if status:
         Brint("[AUDIO] [WARNING]", status)
     recorded_frames.append(indata.copy())
