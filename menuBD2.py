@@ -14,6 +14,7 @@ import sounddevice as sd
 import numpy as np
 import wave
 from faster_whisper import WhisperModel  # Ajoute en haut du fichier
+from chunk_transcriber import transcribe_wav_in_chunks
 from tkinter import ttk
 from tkinter import messagebox
 import json
@@ -421,6 +422,19 @@ def select_wav_and_transcribe():
     if wav_path:
         Brint("[TRANSCRIBE] [FILE SELECTED]", wav_path)
         transcribe_file(wav_path)
+
+def select_wav_and_transcribe_chunked():
+    """Choose a WAV file and transcribe it in 5 min chunks."""
+    wav_path = filedialog.askopenfilename(
+        title="Choisir un fichier WAV",
+        filetypes=[("Fichiers WAV", "*.wav")]
+    )
+    if wav_path:
+        Brint("[CHUNK TRANSCRIBE] [FILE SELECTED]", wav_path)
+        out_path = os.path.splitext(wav_path)[0] + "_chunked.txt"
+        use_faster = use_faster_var.get() if use_faster_var else False
+        transcribe_wav_in_chunks(wav_path, output_path=out_path, use_faster=use_faster)
+        messagebox.showinfo("Transcription", f"Transcript saved to {out_path}")
 
 def Brint(*args, **kwargs):
     if not args:
@@ -1004,6 +1018,7 @@ def launch_gui():
     record_button = tk.Button(root, text="⏺ Start Recording", command=toggle_record)
     record_button.pack(pady=10)
     tk.Button(root, text="🎙️ Transcrire un fichier WAV", command=select_wav_and_transcribe).pack(pady=5)
+    tk.Button(root, text="📃 Transcription longue (5 min chunks)", command=select_wav_and_transcribe_chunked).pack(pady=5)
     tk.Button(root, text="🧪 Générer un scénario de test FAKE", command=on_generate_fake_menu_tree_clicked, bg="#ffeecc").pack(pady=10) # Renamed command
 
     confidence_threshold = tk.DoubleVar(value=0.0)
