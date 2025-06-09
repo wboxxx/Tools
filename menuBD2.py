@@ -27,8 +27,7 @@ from utils import Brint  # ou adapte selon ton import
 from PIL import Image, ImageDraw
 import webbrowser
 from typing import List
-from openai import OpenAI
-openai_client = OpenAI()
+import openai
 
 
 
@@ -42,6 +41,7 @@ from tkinter import simpledialog
 
 # Ajoute ceci au début de ton script ou dans une section de config
 import os
+import openai
 from huggingface_hub import login
 import os
 print(os.getcwd())
@@ -64,16 +64,16 @@ load_huggingface_token()
 def load_openai_api_key_from_file():
     """
     Charge la clé OpenAI depuis le fichier .openai_key si présent.
-    Associe la clé à openai_client.api_key et à la variable d'environnement.
+    Associe la clé à openai.api_key et à la variable d'environnement.
     Retourne True si la clé a été chargée, sinon False.
     """
     try:
-        if os.path.exists(".openai_key"):
-            with open(".openai_key", "r") as f:
-                key = f.read().strip()
-                if key:
+        token_path = os.path.join(os.path.dirname(__file__), ".openai_key")
+        with open(token_path, "r", encoding="utf-8") as f:
+            key = f.read().strip()
+            if key:
                     os.environ["OPENAI_API_KEY"] = key
-                    openai_client.api_key = key
+                    openai.api_key = key
                     print("[OPENAI] Clé API chargée avec succès depuis .openai_key")
                     return True
     except Exception as e:
@@ -84,6 +84,7 @@ def load_openai_api_key_from_file():
 # Appelle cette fonction tôt dans ton script pour initialiser la clé OpenAI
 load_openai_api_key_from_file()
 import os
+import openai
 from tkinter import simpledialog
 
 def load_openai_api_key_from_file():
@@ -93,7 +94,7 @@ def load_openai_api_key_from_file():
                 key = f.read().strip()
                 if key:
                     os.environ["OPENAI_API_KEY"] = key
-                    openai_client.api_key = key
+                    openai.api_key = key
                     return True
     except Exception as e:
         print(f"[OPENAI] Erreur lecture clé API: {e}")
@@ -991,8 +992,8 @@ def send_transcription_to_chatgpt(text: str, wav_path: str) -> None:
         if not api_key:
             Brint("[OPENAI] No API key found in OPENAI_API_KEY")
             return
-        openai_client.api_key = api_key
-        resp = openai_client.chat.completions.create(
+        openai.api_key = api_key
+        resp = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": text}],
         )
@@ -1110,7 +1111,7 @@ def launch_gui():
                 try:
                     with open(".openai_key", "w") as f:
                         f.write(new_key.strip())
-                    openai_client.api_key = new_key.strip()
+                    openai.api_key = new_key.strip()
                     os.environ["OPENAI_API_KEY"] = new_key.strip()
                     openai_key_status_label.config(text="✅ Clé API : chargée", fg="green")
                 except Exception as e:
@@ -1130,7 +1131,9 @@ def launch_gui():
         tree = build_menu_tree_from_tagged_text(tagged_text_list, word_timeline_list, screenshots=session.screenshots, parsed_tags=parsed_tags_list)
 
         output_session_dir = "output_sessions/fake_test_session" # Renamed
-        os.makedirs(output_session_dir, exist_ok=True)
+        base_path = os.path.expanduser("~")  # ton dossier utilisateur, ex: C:\Users\Vincent B
+        output_folder = os.path.join(base_path, "Documents", "output_sessions")
+        os.makedirs(output_folder, exist_ok=True)
 
         global last_word_timeline # Ensure this is the correct timeline to use
         last_word_timeline = word_timeline_list # Assign the timeline from fake session
