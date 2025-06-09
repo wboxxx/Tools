@@ -30,6 +30,10 @@ from typing import List
 from openai import OpenAI
 openai_client = OpenAI()
 
+# Directory of this script and default folder to save session files
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+OUTPUT_SESSIONS_DIR = os.path.join(SCRIPT_DIR, "output_sessions")
+
 
 
 
@@ -671,7 +675,7 @@ from random import uniform
 
 
 
-def generate_fake_session(save_path="output_sessions/fake_test_session"):
+def generate_fake_session(save_path=os.path.join(OUTPUT_SESSIONS_DIR, "fake_test_session")):
     from random import uniform
     from dataclasses import dataclass
     import shutil
@@ -976,7 +980,7 @@ def transcribe_file(wav_path):
     for seconds, fname in get_screenshots_with_timestamps():
         session.screenshots.append(Screenshot(filename=fname, timestamp=seconds))
 
-    session.save("output_sessions/")
+    session.save(OUTPUT_SESSIONS_DIR)
     from session_view_generator import generate_session_view
     generate_session_view(session)
 
@@ -1129,7 +1133,7 @@ def launch_gui():
         # Use the returned lists directly
         tree = build_menu_tree_from_tagged_text(tagged_text_list, word_timeline_list, screenshots=session.screenshots, parsed_tags=parsed_tags_list)
 
-        output_session_dir = "output_sessions/fake_test_session" # Renamed
+        output_session_dir = os.path.join(OUTPUT_SESSIONS_DIR, "fake_test_session")
         os.makedirs(output_session_dir, exist_ok=True)
 
         global last_word_timeline # Ensure this is the correct timeline to use

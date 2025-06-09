@@ -24,6 +24,10 @@ from menu_tree_builder import *
 from menu_html_utils import *
 from utils import Brint  # ou adapte selon ton import
 
+# Paths for saving session output relative to this script
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+OUTPUT_SESSIONS_DIR = os.path.join(SCRIPT_DIR, "output_sessions")
+
 
 action_keywords = {
     "click": "blue",
@@ -480,7 +484,7 @@ import os
 from session_data import SessionData, Word, Screenshot
 from random import uniform
 
-def generate_fake_session(save_path="output_sessions/fake_test_session"):
+def generate_fake_session(save_path=os.path.join(OUTPUT_SESSIONS_DIR, "fake_test_session")):
     Brint("[FAKE SESSION] 🚧 Démarrage génération session factice")
 
     os.makedirs(save_path, exist_ok=True)
@@ -708,7 +712,7 @@ def transcribe_file(wav_path):
         session.screenshots.append(Screenshot(filename=fname, timestamp=seconds))
 
     # Sauvegarde finale
-    session.save("output_sessions/")
+    session.save(OUTPUT_SESSIONS_DIR)
     from session_view_generator import generate_session_view
     generate_session_view(session)
 def update_timer():
@@ -811,7 +815,7 @@ def launch_gui():
             word_timeline,
             session.screenshots  # ✅ envoie les objets, pas des tuples
         )
-        output_dir = "output_sessions/fake_test_session"
+        output_dir = os.path.join(OUTPUT_SESSIONS_DIR, "fake_test_session")
         os.makedirs(output_dir, exist_ok=True)
         last_word_timeline = word_timeline
         render_tagged_transcription.word_timeline = last_word_timeline
