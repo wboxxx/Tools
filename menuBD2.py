@@ -840,17 +840,29 @@ def diarize_speakers(wav_path):
             match = re.search(r"token\s*[:=]\s*['\"](.+?)['\"]", secret_content)
             if match:
                 token = match.group(1).strip()
+                preview = token[:4] + "..." + token[-4:] if len(token) > 8 else token
+                Brint(f"[DIARIZATION] Token detected ({len(token)} chars): {preview}")
+            else:
+                Brint("[DIARIZATION] Token pattern not found in secret.js")
+        else:
+            Brint("[DIARIZATION] secret.js not found")
+
         pipeline = Pipeline.from_pretrained(
             "pyannote/speaker-diarization",
             use_auth_token=token or "token"
         )
+        Brint("[DIARIZATION] Pipeline initialized, processing", wav_path)
         diarization = pipeline(wav_path)
+        Brint("[DIARIZATION] Pipeline processing completed")
     except Exception as exc:
         Brint("[DIARIZATION] Error during diarization:", str(exc))
         return []
 
     segments = []
     for turn, _, speaker in diarization.itertracks(yield_label=True):
+        Brint(
+            f"[DIARIZATION] Segment {speaker}: {turn.start:.2f}s -> {turn.end:.2f}s"
+        )
         segments.append({"start": turn.start, "end": turn.end, "speaker": speaker})
     Brint(f"[DIARIZATION] Detected {len(segments)} segments")
     return segments
@@ -875,7 +887,9 @@ def transcribe_file(wav_path):
     )
 
     if diarization_var and diarization_var.get():
+        Brint("[DIARIZATION] Speaker identification enabled")
         speaker_segments = diarize_speakers(wav_path)
+        Brint(f"[DIARIZATION] Speaker segments: {speaker_segments}")
     else:
         Brint("[DIARIZATION] Skipping speaker identification")
         speaker_segments = []
