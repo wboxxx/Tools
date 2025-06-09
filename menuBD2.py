@@ -981,6 +981,15 @@ def transcribe_file(wav_path):
     from session_view_generator import generate_session_view
     generate_session_view(session)
 
+    # Write plain text transcript next to the WAV file
+    txt_out = os.path.splitext(wav_path)[0] + "_transcription.txt"
+    try:
+        with open(txt_out, "w", encoding="utf-8") as f:
+            f.write(transcription_text_widget.get("1.0", tk.END).strip())
+        Brint(f"[SAVE] \u2705 Transcription texte sauvegard\u00e9e : {txt_out}")
+    except Exception as e:
+        Brint("[SAVE] [ERROR TXT]", str(e))
+
     if send_to_openai_var and send_to_openai_var.get():
         transcript_text = transcription_text_widget.get("1.0", tk.END)
         send_transcription_to_chatgpt(transcript_text, wav_path)

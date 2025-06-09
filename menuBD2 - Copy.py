@@ -711,6 +711,15 @@ def transcribe_file(wav_path):
     session.save("output_sessions/")
     from session_view_generator import generate_session_view
     generate_session_view(session)
+
+    # Also save plain text transcription
+    txt_out = os.path.splitext(wav_path)[0] + "_transcription.txt"
+    try:
+        with open(txt_out, "w", encoding="utf-8") as f:
+            f.write(transcription_text_widget.get("1.0", tk.END).strip())
+        Brint(f"[SAVE] \u2705 Transcription texte sauvegard\u00e9e : {txt_out}")
+    except Exception as e:
+        Brint("[SAVE] [ERROR TXT]", str(e))
 def update_timer():
     global timer_running
     if timer_running:
