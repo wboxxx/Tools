@@ -105,15 +105,19 @@ def send_long_text_to_chatgpt(text: str, wav_path: str, max_tokens=16000, model=
             {chunk}
             """
             
-            # ✅ NOUVELLE API OpenAI (v1.0+)
-            client = openai.OpenAI()  # Utilise la clé API depuis les variables d'environnement
-            response = client.chat.completions.create(
+            # ✅ API OpenAI v0.x
+            response = openai.ChatCompletion.create(
                 model=model,
                 messages=[{"role": "user", "content": prompt}]
             )
-            
-            # ✅ Accès correct au contenu de la réponse
-            partial = response.choices[0].message.content
+
+            if hasattr(response, "choices") and len(response.choices) > 0:
+                if hasattr(response.choices[0], "message"):
+                    partial = response.choices[0].message.content
+                else:
+                    partial = response.choices[0]["message"]["content"]
+            else:
+                partial = str(response)
             partial_summaries.append(partial)
         
         # Synthèse finale
@@ -123,13 +127,19 @@ def send_long_text_to_chatgpt(text: str, wav_path: str, max_tokens=16000, model=
             joined = "\n\n".join(partial_summaries)
             print("[OPENAI] Synthèse finale des résumés partiels")
             
-            response = client.chat.completions.create(
+            response = openai.ChatCompletion.create(
                 model=model,
                 messages=[
                     {"role": "user", "content": f"Voici plusieurs résumés partiels d'une longue transcription. Fusionne-les en un résumé global, clair, structuré et sans redondance :\n\n{joined}"}
                 ]
             )
-            final_summary = response.choices[0].message.content
+            if hasattr(response, "choices") and len(response.choices) > 0:
+                if hasattr(response.choices[0], "message"):
+                    final_summary = response.choices[0].message.content
+                else:
+                    final_summary = response.choices[0]["message"]["content"]
+            else:
+                final_summary = str(response)
         
         # Sauvegarde
         out_path = os.path.splitext(wav_path)[0] + "_chatgpt.txt"
@@ -204,15 +214,19 @@ def send_long_text_to_chatgpt(text: str, wav_path: str, max_tokens=16000, model=
             {chunk}
             """
             
-            # ✅ NOUVELLE API OpenAI (v1.0+)
-            client = openai.OpenAI()  # Utilise la clé API depuis les variables d'environnement
-            response = client.chat.completions.create(
+            # ✅ API OpenAI v0.x
+            response = openai.ChatCompletion.create(
                 model=model,
                 messages=[{"role": "user", "content": prompt}]
             )
-            
-            # ✅ Accès correct au contenu de la réponse
-            partial = response.choices[0].message.content
+
+            if hasattr(response, "choices") and len(response.choices) > 0:
+                if hasattr(response.choices[0], "message"):
+                    partial = response.choices[0].message.content
+                else:
+                    partial = response.choices[0]["message"]["content"]
+            else:
+                partial = str(response)
             partial_summaries.append(partial)
         
         # Synthèse finale
@@ -222,13 +236,19 @@ def send_long_text_to_chatgpt(text: str, wav_path: str, max_tokens=16000, model=
             joined = "\n\n".join(partial_summaries)
             print("[OPENAI] Synthèse finale des résumés partiels")
             
-            response = client.chat.completions.create(
+            response = openai.ChatCompletion.create(
                 model=model,
                 messages=[
                     {"role": "user", "content": f"Voici plusieurs résumés partiels d'une longue transcription. Fusionne-les en un résumé global, clair, structuré et sans redondance :\n\n{joined}"}
                 ]
             )
-            final_summary = response.choices[0].message.content
+            if hasattr(response, "choices") and len(response.choices) > 0:
+                if hasattr(response.choices[0], "message"):
+                    final_summary = response.choices[0].message.content
+                else:
+                    final_summary = response.choices[0]["message"]["content"]
+            else:
+                final_summary = str(response)
         
         # Sauvegarde
         out_path = os.path.splitext(wav_path)[0] + "_chatgpt.txt"
