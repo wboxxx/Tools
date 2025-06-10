@@ -1,3 +1,4 @@
+
 import tkinter as tk
 from tkinter import filedialog
 import os
@@ -44,7 +45,322 @@ import os
 import openai
 from huggingface_hub import login
 import os
+
 print(os.getcwd())
+def send_long_text_to_chatgpt(text: str, wav_path: str, max_tokens=16000, model="gpt-3.5-turbo-16k"):
+    """
+    Découpe le texte en chunks sécurisés (max_tokens), résume chaque chunk, puis fait une synthèse globale.
+    """
+    import tiktoken
+    import openai
+    import os
+    
+    # Configuration des tokens selon le modèle
+    if model == "gpt-3.5-turbo":
+        max_tokens = 4000
+    elif model == "gpt-3.5-turbo-16k":
+        max_tokens = 16000
+    elif model == "gpt-4":
+        max_tokens = 8000  # conservateur pour éviter les erreurs
+    
+    encoding = tiktoken.encoding_for_model(model)
+    token_budget = max_tokens - 1000  # marge pour la réponse
+    
+    def split_text_by_tokens(text, max_chunk_tokens):
+        words = text.split()
+        chunks = []
+        current_chunk = []
+        current_tokens = 0
+        
+        for word in words:
+            word_tokens = len(encoding.encode(word)) + 1  # +1 pour l'espace
+            if current_tokens + word_tokens > max_chunk_tokens:
+                chunks.append(" ".join(current_chunk))
+                current_chunk = [word]
+                current_tokens = word_tokens
+            else:
+                current_chunk.append(word)
+                current_tokens += word_tokens
+        
+        if current_chunk:
+            chunks.append(" ".join(current_chunk))
+        return chunks
+    
+    try:
+        chunks = split_text_by_tokens(text, token_budget)
+        partial_summaries = []
+        
+        for i, chunk in enumerate(chunks):
+            print(f"[OPENAI] Envoi du chunk {i+1}/{len(chunks)} ({len(encoding.encode(chunk))} tokens)")
+            
+            prompt = f"""
+            Tu es un analyste expert chargé de résumer une transcription orale détaillée. Ta tâche est de produire un résumé structuré, fidèle, et riche en contenu.
+            Instructions :
+            - Identifie les points principaux évoqués, même implicites.
+            - Inclue des exemples ou extraits textuels entre guillemets si pertinents.
+            - Structure ta réponse en plusieurs sections (ex. : Contexte, Points abordés, Problèmes soulevés, Suggestions ou remarques).
+            - Ne fais pas un résumé simpliste. Préserve les nuances, contradictions ou hésitations exprimées.
+            - Reformule avec clarté, mais sans lisser les propos ou cacher les tensions.
+            Voici le texte à résumer :
+            {chunk}
+            """
+            
+            # ✅ NOUVELLE API OpenAI (v1.0+)
+            client = openai.OpenAI()  # Utilise la clé API depuis les variables d'environnement
+            response = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            
+            # ✅ Accès correct au contenu de la réponse
+            partial = response.choices[0].message.content
+            partial_summaries.append(partial)
+        
+        # Synthèse finale
+        if len(partial_summaries) == 1:
+            final_summary = partial_summaries[0]
+        else:
+            joined = "\n\n".join(partial_summaries)
+            print("[OPENAI] Synthèse finale des résumés partiels")
+            
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "user", "content": f"Voici plusieurs résumés partiels d'une longue transcription. Fusionne-les en un résumé global, clair, structuré et sans redondance :\n\n{joined}"}
+                ]
+            )
+            final_summary = response.choices[0].message.content
+        
+        # Sauvegarde
+        out_path = os.path.splitext(wav_path)[0] + "_chatgpt.txt"
+        with open(out_path, "w", encoding="utf-8") as f:
+            f.write(final_summary)
+        
+        print(f"[OPENAI] ✅ Résumé global sauvegardé dans : {out_path}")
+        
+    except Exception as e:
+        print(f"[OPENAI] ❌ Erreur dans le résumé long : {str(e)}")
+
+
+# ========================================
+# ALTERNATIVE : Si vous devez garder l'ancienne API
+# ========================================
+
+def send_long_text_to_chatgpt(text: str, wav_path: str, max_tokens=16000, model="gpt-3.5-turbo-16k"):
+    """
+    Découpe le texte en chunks sécurisés (max_tokens), résume chaque chunk, puis fait une synthèse globale.
+    """
+    import tiktoken
+    import openai
+    import os
+    
+    # Configuration des tokens selon le modèle
+    if model == "gpt-3.5-turbo":
+        max_tokens = 4000
+    elif model == "gpt-3.5-turbo-16k":
+        max_tokens = 16000
+    elif model == "gpt-4":
+        max_tokens = 8000  # conservateur pour éviter les erreurs
+    
+    encoding = tiktoken.encoding_for_model(model)
+    token_budget = max_tokens - 1000  # marge pour la réponse
+    
+    def split_text_by_tokens(text, max_chunk_tokens):
+        words = text.split()
+        chunks = []
+        current_chunk = []
+        current_tokens = 0
+        
+        for word in words:
+            word_tokens = len(encoding.encode(word)) + 1  # +1 pour l'espace
+            if current_tokens + word_tokens > max_chunk_tokens:
+                chunks.append(" ".join(current_chunk))
+                current_chunk = [word]
+                current_tokens = word_tokens
+            else:
+                current_chunk.append(word)
+                current_tokens += word_tokens
+        
+        if current_chunk:
+            chunks.append(" ".join(current_chunk))
+        return chunks
+    
+    try:
+        chunks = split_text_by_tokens(text, token_budget)
+        partial_summaries = []
+        
+        for i, chunk in enumerate(chunks):
+            print(f"[OPENAI] Envoi du chunk {i+1}/{len(chunks)} ({len(encoding.encode(chunk))} tokens)")
+            
+            prompt = f"""
+            Tu es un analyste expert chargé de résumer une transcription orale détaillée. Ta tâche est de produire un résumé structuré, fidèle, et riche en contenu.
+            Instructions :
+            - Identifie les points principaux évoqués, même implicites.
+            - Inclue des exemples ou extraits textuels entre guillemets si pertinents.
+            - Structure ta réponse en plusieurs sections (ex. : Contexte, Points abordés, Problèmes soulevés, Suggestions ou remarques).
+            - Ne fais pas un résumé simpliste. Préserve les nuances, contradictions ou hésitations exprimées.
+            - Reformule avec clarté, mais sans lisser les propos ou cacher les tensions.
+            Voici le texte à résumer :
+            {chunk}
+            """
+            
+            # ✅ NOUVELLE API OpenAI (v1.0+)
+            client = openai.OpenAI()  # Utilise la clé API depuis les variables d'environnement
+            response = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            
+            # ✅ Accès correct au contenu de la réponse
+            partial = response.choices[0].message.content
+            partial_summaries.append(partial)
+        
+        # Synthèse finale
+        if len(partial_summaries) == 1:
+            final_summary = partial_summaries[0]
+        else:
+            joined = "\n\n".join(partial_summaries)
+            print("[OPENAI] Synthèse finale des résumés partiels")
+            
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "user", "content": f"Voici plusieurs résumés partiels d'une longue transcription. Fusionne-les en un résumé global, clair, structuré et sans redondance :\n\n{joined}"}
+                ]
+            )
+            final_summary = response.choices[0].message.content
+        
+        # Sauvegarde
+        out_path = os.path.splitext(wav_path)[0] + "_chatgpt.txt"
+        with open(out_path, "w", encoding="utf-8") as f:
+            f.write(final_summary)
+        
+        print(f"[OPENAI] ✅ Résumé global sauvegardé dans : {out_path}")
+        
+    except Exception as e:
+        print(f"[OPENAI] ❌ Erreur dans le résumé long : {str(e)}")
+
+
+# ========================================
+# ALTERNATIVE : Si vous devez garder l'ancienne API
+# ========================================
+
+def send_long_text_to_chatgpt_legacy(text: str, wav_path: str, max_tokens=16000, model="gpt-3.5-turbo-16k"):
+    """
+    Version avec l'ancienne API OpenAI (si vous ne pouvez pas migrer)
+    """
+    import tiktoken
+    import openai
+    import os
+    
+    # Configuration des tokens selon le modèle
+    if model == "gpt-3.5-turbo":
+        max_tokens = 4000
+    elif model == "gpt-3.5-turbo-16k":
+        max_tokens = 16000
+    elif model == "gpt-4":
+        max_tokens = 8000
+    
+    encoding = tiktoken.encoding_for_model(model)
+    token_budget = max_tokens - 1000
+    
+    def split_text_by_tokens(text, max_chunk_tokens):
+        words = text.split()
+        chunks = []
+        current_chunk = []
+        current_tokens = 0
+        
+        for word in words:
+            word_tokens = len(encoding.encode(word)) + 1
+            if current_tokens + word_tokens > max_chunk_tokens:
+                chunks.append(" ".join(current_chunk))
+                current_chunk = [word]
+                current_tokens = word_tokens
+            else:
+                current_chunk.append(word)
+                current_tokens += word_tokens
+        
+        if current_chunk:
+            chunks.append(" ".join(current_chunk))
+        return chunks
+    
+    try:
+        chunks = split_text_by_tokens(text, token_budget)
+        partial_summaries = []
+        
+        for i, chunk in enumerate(chunks):
+            print(f"[OPENAI] Envoi du chunk {i+1}/{len(chunks)} ({len(encoding.encode(chunk))} tokens)")
+            
+            prompt = f"""
+            Tu es un analyste expert chargé de résumer une transcription orale détaillée. Ta tâche est de produire un résumé structuré, fidèle, et riche en contenu.
+            Instructions :
+            - Identifie les points principaux évoqués, même implicites.
+            - Inclue des exemples ou extraits textuels entre guillemets si pertinents.
+            - Structure ta réponse en plusieurs sections (ex. : Contexte, Points abordés, Problèmes soulevés, Suggestions ou remarques).
+            - Ne fais pas un résumé simpliste. Préserve les nuances, contradictions ou hésitations exprimées.
+            - Reformule avec clarté, mais sans lisser les propos ou cacher les tensions.
+            Voici le texte à résumer :
+            {chunk}
+            """
+            
+            # ✅ ANCIENNE API avec gestion d'erreur
+            response = openai.ChatCompletion.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            
+            # ✅ Vérification du type de réponse
+            if hasattr(response, 'choices') and len(response.choices) > 0:
+                if hasattr(response.choices[0], 'message'):
+                    # Nouvelle structure
+                    partial = response.choices[0].message.content
+                else:
+                    # Ancienne structure
+                    partial = response.choices[0]["message"]["content"]
+            else:
+                print(f"[OPENAI] ⚠️ Réponse inattendue : {response}")
+                partial = str(response)
+            
+            partial_summaries.append(partial)
+        
+        # Synthèse finale
+        if len(partial_summaries) == 1:
+            final_summary = partial_summaries[0]
+        else:
+            joined = "\n\n".join(partial_summaries)
+            print("[OPENAI] Synthèse finale des résumés partiels")
+            
+            response = openai.ChatCompletion.create(
+                model=model,
+                messages=[
+                    {"role": "user", "content": f"Voici plusieurs résumés partiels d'une longue transcription. Fusionne-les en un résumé global, clair, structuré et sans redondance :\n\n{joined}"}
+                ]
+            )
+            
+            if hasattr(response, 'choices') and len(response.choices) > 0:
+                if hasattr(response.choices[0], 'message'):
+                    final_summary = response.choices[0].message.content
+                else:
+                    final_summary = response.choices[0]["message"]["content"]
+            else:
+                final_summary = str(response)
+        
+        # Sauvegarde
+        out_path = os.path.splitext(wav_path)[0] + "_chatgpt.txt"
+        with open(out_path, "w", encoding="utf-8") as f:
+            f.write(final_summary)
+        
+        print(f"[OPENAI] ✅ Résumé global sauvegardé dans : {out_path}")
+        
+    except Exception as e:
+        print(f"[OPENAI] ❌ Erreur dans le résumé long : {str(e)}")
+        import traceback
+        traceback.print_exc()  # Pour plus de détails sur l'erreur
+
+
+
+
+from huggingface_hub import login
 
 def load_huggingface_token():
     try:
@@ -52,14 +368,16 @@ def load_huggingface_token():
         with open(token_path, "r", encoding="utf-8") as f:
             token = f.read().strip()
             if token.startswith("hf_"):
-                login(token)
+                login(token)  # optionnel
                 print("[HF] ✅ Token HuggingFace chargé avec succès")
-                return True
+                print(f"[DEBUG] Token extrait : {repr(token)} ({type(token)})")
+                return token
+            else:
+                print("[HF] ❌ Le token ne commence pas par 'hf_' : contenu =", repr(token))
     except Exception as e:
         print("[HF] ❌ Erreur lecture token :", e)
-    return False
-
-load_huggingface_token()
+    return None
+HF_TOKEN = load_huggingface_token()
 
 def load_openai_api_key_from_file():
     """
@@ -83,22 +401,22 @@ def load_openai_api_key_from_file():
 
 # Appelle cette fonction tôt dans ton script pour initialiser la clé OpenAI
 load_openai_api_key_from_file()
-import os
-import openai
-from tkinter import simpledialog
+# import os
+# import openai
+# from tkinter import simpledialog
 
-def load_openai_api_key_from_file():
-    try:
-        if os.path.exists(".openai_key"):
-            with open(".openai_key", "r") as f:
-                key = f.read().strip()
-                if key:
-                    os.environ["OPENAI_API_KEY"] = key
-                    openai.api_key = key
-                    return True
-    except Exception as e:
-        print(f"[OPENAI] Erreur lecture clé API: {e}")
-    return False
+# # def load_openai_api_key_from_file():
+    # try:
+        # if os.path.exists(".openai_key"):
+            # with open(".openai_key", "r") as f:
+                # key = f.read().strip()
+                # if key:
+                    # os.environ["OPENAI_API_KEY"] = key
+                    # openai.api_key = key
+                    # return True
+    # except Exception as e:
+        # print(f"[OPENAI] Erreur lecture clé API: {e}")
+    # return False
 
 
 # Appelle cette fonction très tôt dans ton code (après les imports par exemple)
@@ -123,6 +441,7 @@ from pyannote.audio import Pipeline
 # with open("audio.rttm", "w") as rttm:
     # diarization.write_rttm(rttm)
 
+openai_model_var = ""
 
 
 last_loaded_session = None
@@ -511,7 +830,7 @@ def select_wav_and_transcribe():
         transcribe_file(wav_path)
         if send_to_openai_var and send_to_openai_var.get():
             text = transcription_text_widget.get("1.0", tk.END)
-            send_transcription_to_chatgpt(text, wav_path)
+            send_long_text_to_chatgpt(text, wav_path)
 
 def select_wav_and_transcribe_chunked():
     """Choose a WAV file and transcribe it in 5 min chunks."""
@@ -766,6 +1085,15 @@ def generate_fake_session(save_path="output_sessions/fake_test_session"):
     Brint("[UI] Texte fake injecté dans les widgets 'Transcription' et 'Tags détectés'")
 
     return session, tagged_text, word_timeline, parsed_tags
+# Lecture du token HF (via secret.js ou variable env)
+def get_hf_token():
+    if os.path.exists("secret.js"):
+        with open("secret.js", "r") as f:
+            content = f.read()
+        match = re.search(r"token\s*[:=]\s*['\"](.+?)['\"]", content)
+        if match:
+            return match.group(1).strip()
+    return os.getenv("HF_TOKEN")
 
 
 def toggle_record():
@@ -823,51 +1151,59 @@ def toggle_record():
         transcribe_file(wav_path)
 
 
+# import os
+# import re
+# from pyannote.audio import Pipeline
+# def load_huggingface_token():
+    # if os.path.exists("secret.js"):
+        # with open("secret.js", "r") as f:
+            # content = f.read()
+        # match = re.search(r"token\s*[:=]\s*['\"](.+?)['\"]", content)
+        # if match:
+            # return match.group(1).strip()
+    # return os.getenv("HF_TOKEN")
+
 def diarize_speakers(wav_path):
-    """Return list of speaker segments using pyannote pipeline."""
-    try:
-        from pyannote.audio import Pipeline
-    except Exception as exc:
-        Brint("[DIARIZATION] pyannote.audio not available:", str(exc))
-        return []
+    """Return list of speaker segments using pyannote pipeline (safe version, no speechbrain)."""
+    token = HF_TOKEN
+    if isinstance(token, str) and len(token) > 0:
+        preview = token[:4] + "..." + token[-4:] if len(token) > 8 else token
+        Brint(f"[DIARIZATION] ✅ Token HF chargé ({len(token)} chars): {preview}")
+    else:
+        Brint("[DIARIZATION] ❌ Token Hugging Face invalide ou manquant.")
+        fallback = os.getenv("HF_TOKEN")
+        print(f"[DEBUG] Token fallback env : {repr(fallback)} ({type(fallback)})")
+        return fallback
+
+        # return []
 
     try:
-        token = None
-        if os.path.exists("secret.js"):
-            Brint("[DIARIZATION] Reading token from secret.js")
-            with open("secret.js", "r") as f:
-                secret_content = f.read()
-            match = re.search(r"token\s*[:=]\s*['\"](.+?)['\"]", secret_content)
-            if match:
-                token = match.group(1).strip()
-                preview = token[:4] + "..." + token[-4:] if len(token) > 8 else token
-                Brint(f"[DIARIZATION] Token detected ({len(token)} chars): {preview}")
-            else:
-                Brint("[DIARIZATION] Token pattern not found in secret.js")
-        else:
-            Brint("[DIARIZATION] secret.js not found")
-
         pipeline = Pipeline.from_pretrained(
             "pyannote/speaker-diarization",
-            use_auth_token=token or "token"
+            use_auth_token=token
         )
-        Brint("[DIARIZATION] Pipeline initialized, processing", wav_path)
+        Brint("[DIARIZATION] ✅ Pipeline initialized, processing", wav_path)
         diarization = pipeline(wav_path)
-        Brint("[DIARIZATION] Pipeline processing completed")
+        Brint("[DIARIZATION] ✅ Pipeline processing completed")
+
+        segments = []
+        for turn, _, speaker in diarization.itertracks(yield_label=True):
+            Brint(f"[DIARIZATION] Segment {speaker}: {turn.start:.2f}s -> {turn.end:.2f}s")
+            segments.append({
+                "start": turn.start,
+                "end": turn.end,
+                "speaker": speaker
+            })
+
+        Brint(f"[DIARIZATION] ✅ {len(segments)} segments détectés")
+        return segments
+
     except Exception as exc:
-        Brint("[DIARIZATION] Error during diarization:", str(exc))
+        if "401" in str(exc):
+            Brint("[DIARIZATION] ❌ Erreur 401 – vérifie ton token Hugging Face (accès refusé).")
+        else:
+            Brint("[DIARIZATION] ❌ Erreur pendant la diarisation :", str(exc))
         return []
-
-    segments = []
-    for turn, _, speaker in diarization.itertracks(yield_label=True):
-        Brint(
-            f"[DIARIZATION] Segment {speaker}: {turn.start:.2f}s -> {turn.end:.2f}s"
-        )
-        segments.append({"start": turn.start, "end": turn.end, "speaker": speaker})
-    Brint(f"[DIARIZATION] Detected {len(segments)} segments")
-    return segments
-
-
 
 def transcribe_file(wav_path):
     from session_data import SessionData, Word, Screenshot # Moved import
@@ -967,12 +1303,12 @@ def transcribe_file(wav_path):
             )
 
             current_word_timeline = []
-            segments = result.get("segments", [])
+            segments = result.get("segments", []) if isinstance(result, dict) else []            
             for seg in segments:
                 for word_info in seg["words"]:
                     word = word_info["word"]
                     start = word_info["start"]
-                    conf = word_info.get("probability", 1.0)
+                    conf = word_info.get("probability", 1.0) if isinstance(word_info, dict) else 1.0                    
                     if conf < confidence_threshold.get():
                         continue
                     insert_word_to_widget(word, start, conf)
@@ -1017,7 +1353,7 @@ def send_transcription_to_chatgpt(text: str, wav_path: str) -> None:
             return
         openai.api_key = api_key
         resp = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
+            model="gpt-4",
             messages=[{"role": "user", "content": text}],
         )
         answer = resp.choices[0].message["content"]
@@ -1036,7 +1372,22 @@ def update_timer():
         seconds = elapsed % 60
         timer_label.config(text=f"Durée : {minutes:02}:{seconds:02}")
         timer_label.after(1000, update_timer)
+def select_txt_and_summarize_with_openai():
+    txt_path = filedialog.askopenfilename(
+        title="Choisir un fichier .txt à résumer",
+        filetypes=[("Fichiers texte", "*.txt")]
+    )
+    if not txt_path:
+        return
 
+    try:
+        with open(txt_path, "r", encoding="utf-8") as f:
+            text = f.read()
+        model = openai_model_var.get()
+        send_long_text_to_chatgpt(text, txt_path, model=model)
+    except Exception as e:
+        Brint("[OPENAI] ❌ Erreur lecture fichier .txt :", str(e))
+        messagebox.showerror("Erreur", f"Impossible de lire le fichier : {e}")
 
 def launch_gui():
     global timer_label, audio_output_var, record_button, use_faster_var, confidence_threshold, diarization_var
@@ -1176,6 +1527,7 @@ def launch_gui():
     load_config()
     root = tk.Tk()
     root.title("Live Screenshot Annotator")
+    openai_model_var = tk.StringVar(value="gpt-3.5-turbo-16k")  # valeur par défaut
 
     timer_label = tk.Label(root, text="Durée : 00:00")
     timer_label.pack()
@@ -1195,12 +1547,28 @@ def launch_gui():
         openai_key_status_label.config(text="🔒 Clé API : non chargée", fg="red")
 
     tk.Button(root, text="🔑 Vérifier / définir clé OpenAI", command=check_or_prompt_openai_key).pack(pady=5)
+    tk.Label(root, text="🧠 Modèle OpenAI à utiliser :").pack()
+    tk.OptionMenu(
+        root,
+        openai_model_var,
+        "gpt-3.5-turbo", 
+        "gpt-3.5-turbo-16k",
+        "gpt-4"
+    ).pack(pady=5)
 
     tk.Button(root, text="▶ Démarrer Annotation & Audio", command=start_all_processes).pack(pady=20) # Renamed command
     tk.Button(root, text="🎛 Choisir sortie audio (loopback)", command=choose_loopback_device).pack(pady=5)
 
     audio_output_var = tk.BooleanVar(value=CAPTURE_OUTPUT_AUDIO) # Init with global
     tk.Checkbutton(root, text="🎧 Capturer aussi le son de sortie (loopback)", variable=audio_output_var, command=toggle_output_audio).pack()
+    tk.Button(
+        root,
+        text="🧠 Résumer un fichier texte (ChatGPT)",
+        command=select_txt_and_summarize_with_openai,
+        bg="#ddeeff"
+    ).pack(pady=5)
+
+
 
     use_faster_var = tk.BooleanVar(value=False) # Default to False
     tk.Checkbutton(root, text="⚡ Utiliser Faster-Whisper (GPU optimisé)", variable=use_faster_var, command=toggle_faster).pack()
