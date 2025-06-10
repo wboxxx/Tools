@@ -1383,7 +1383,10 @@ def select_txt_and_summarize_with_openai():
     try:
         with open(txt_path, "r", encoding="utf-8") as f:
             text = f.read()
-        model = openai_model_var.get()
+        if hasattr(openai_model_var, "get"):
+            model = openai_model_var.get()
+        else:
+            model = openai_model_var or "gpt-3.5-turbo-16k"
         send_long_text_to_chatgpt(text, txt_path, model=model)
     except Exception as e:
         Brint("[OPENAI] ❌ Erreur lecture fichier .txt :", str(e))
@@ -1527,6 +1530,7 @@ def launch_gui():
     load_config()
     root = tk.Tk()
     root.title("Live Screenshot Annotator")
+    global openai_model_var
     openai_model_var = tk.StringVar(value="gpt-3.5-turbo-16k")  # valeur par défaut
 
     timer_label = tk.Label(root, text="Durée : 00:00")
