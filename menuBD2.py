@@ -28,6 +28,7 @@ from utils import Brint  # ou adapte selon ton import
 from PIL import Image, ImageDraw
 import webbrowser
 from typing import List
+from drive_sync import DriveMirrorer, search_shards
 import openai
 
 
@@ -1548,6 +1549,40 @@ def launch_gui():
         webbrowser.open(f"file://{os.path.abspath(html_path)}")
 
     load_config()
+    def open_drive_sync_window():
+        win = tk.Toplevel(root)
+        win.title("Google Drive Mirror")
+        tk.Label(win, text="Shared Folder ID:").pack()
+        folder_entry = tk.Entry(win, width=50)
+        folder_entry.pack()
+
+        verbose_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(win, text="Verbose", variable=verbose_var).pack()
+
+        def do_sync():
+            folder_id = folder_entry.get().strip()
+            if not folder_id:
+                messagebox.showerror("Erreur", "ID du dossier requis")
+                return
+            mirrorer = DriveMirrorer(folder_id, verbose=verbose_var.get())
+            threading.Thread(target=mirrorer.sync, daemon=True).start()
+            messagebox.showinfo("Sync", "Synchronisation lancée")
+
+        def do_search():
+            query = simpledialog.askstring("Recherche", "Requête:")
+            if not query:
+                return
+            results = search_shards(query)
+            res_win = tk.Toplevel(win)
+            res_win.title("Résultats")
+            lb = tk.Listbox(res_win, width=80)
+            lb.pack(fill=tk.BOTH, expand=True)
+            for item in results:
+                lb.insert(tk.END, f"{item['source']} : {item['summary'][:80]}")
+
+        tk.Button(win, text="Synchroniser", command=do_sync).pack(pady=5)
+        tk.Button(win, text="Rechercher", command=do_search).pack(pady=5)
+
     root = tk.Tk()
     root.title("Live Screenshot Annotator")
     global openai_model_var
@@ -1560,6 +1595,7 @@ def launch_gui():
     tk.Button(root, text="Choisir dossier", command=select_directory).pack(pady=5)
     folder_path_label = tk.Label(root, text="Aucun dossier sélectionné", fg="blue", cursor="hand2")
     folder_path_label.pack()
+    tk.Button(root, text="🔁 Sync Google Drive", command=open_drive_sync_window).pack(pady=5)
     folder_path_label.bind("<Button-1>", lambda e: open_folder_path())
     openai_key_status_label = tk.Label(root, text="🔒 Clé API : non chargée", fg="red")
     openai_key_status_label.pack()
